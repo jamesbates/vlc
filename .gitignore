@@ -70,3 +70,6 @@ VLC-tmp/*
 contrib/build*
 share/osdmenu/default.cfg
 contrib/vlc-contrib*.tar.bz2
+.cproject
+.project
+
