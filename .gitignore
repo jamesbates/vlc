@@ -64,3 +64,9 @@ projects/macosx/framework/MobileVLCKit/vlc-plugins.h
 projects/macosx/framework/MobileVLCKit/vlc-plugins.xcconfig
 extras/contrib/.*
 
+# James' stuff
+tmp/*
+VLC-tmp/*
+contrib/build*
+share/osdmenu/default.cfg
+contrib/vlc-contrib*.tar.bz2
