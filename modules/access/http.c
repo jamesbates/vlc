@@ -192,6 +192,15 @@ struct access_sys_t
     vlc_array_t * cookies;
 };
 
+typedef struct username_password_pair_t {
+
+	char 	*psz_username;
+	char 	*psz_password;
+} username_password_pair_t;
+
+
+static vlc_object_t *find_root(vlc_object_t *o);
+
 /* */
 static int OpenWithCookies( vlc_object_t *p_this, const char *psz_access,
                             unsigned i_redirect, vlc_array_t *cookies );
@@ -295,6 +304,23 @@ static int OpenWithCookies( vlc_object_t *p_this, const char *psz_access,
 
     http_auth_Init( &p_sys->auth );
     http_auth_Init( &p_sys->proxy_auth );
+
+    /* Setup saved HTTP credentials dict, if necessary */
+    vlc_value_t val_savedpasswords;
+
+    if (var_Get(find_root(p_this), "access_http_savedpasswords", &val_savedpasswords) == VLC_ENOVAR) {
+
+    	msg_Dbg( p_access, "No saved passwords dict yet => creating one");
+    	val_savedpasswords.p_address = malloc(sizeof(vlc_dictionary_t));
+    	vlc_dictionary_init((vlc_dictionary_t *) val_savedpasswords.p_address, 100);
+
+    	var_Create(find_root(p_this), "access_http_savedpasswords", VLC_VAR_ADDRESS);
+    	var_Set(find_root(p_this), "access_http_savedpasswords", val_savedpasswords);
+    }
+
+    vlc_dictionary_t *dict_savedpasswords = (vlc_dictionary_t *) val_savedpasswords.p_address;
+
+
 
     /* Parse URI - remove spaces */
     p = psz = strdup( p_access->psz_location );
@@ -536,6 +562,31 @@ connect:
         }
         msg_Dbg( p_access, "authentication failed for realm %s",
                  p_sys->auth.psz_realm );
+
+        /* Check for saved username/password for this realm */
+        if (vlc_dictionary_has_key(dict_savedpasswords, p_sys->auth.psz_realm)) {
+
+        	username_password_pair_t *credentials =
+        			(username_password_pair_t *) vlc_dictionary_value_for_key(dict_savedpasswords, p_sys->auth.psz_realm);
+        	p_sys->url.psz_username = strdup(credentials->psz_username);
+        	p_sys->url.psz_password = strdup(credentials->psz_password);
+
+        	msg_Dbg( p_access, "found saved username/password for user %s in realm %s",
+        			p_sys->url.psz_username, p_sys->auth.psz_realm );
+
+        	/* Clear value out of dictionary: should the cached result be wrong, and the authentication fail at the next connection
+        	 * attempt, then the dialog will be shown again
+        	 */
+        	free(credentials->psz_username);
+        	free(credentials->psz_password);
+        	free(credentials);
+        	vlc_dictionary_remove_value_for_key(dict_savedpasswords, p_sys->auth.psz_realm, NULL, NULL);
+
+        	/* Attempt to connect again, with retrieved cached credentials */
+        	Disconnect( p_access );
+            goto connect;
+        }
+
         dialog_Login( p_access, &psz_login, &psz_password,
                       _("HTTP authentication"),
              _("Please enter a valid login name and a password for realm %s."),
@@ -555,6 +606,18 @@ connect:
             goto error;
         }
     }
+
+    /* Connection authentication did not fail => save user & password if available */
+    if (p_sys->url.psz_username && p_sys->url.psz_password) {
+
+    	username_password_pair_t *credentials = (username_password_pair_t *) malloc(sizeof(username_password_pair_t));
+    	credentials->psz_username = strdup(p_sys->url.psz_username);
+    	credentials->psz_password = strdup(p_sys->url.psz_password);
+
+    	vlc_dictionary_insert(dict_savedpasswords, p_sys->auth.psz_realm, credentials);
+    	msg_Dbg( p_access, "saved username/password for user %s of realm %s", p_sys->url.psz_username, p_sys->auth.psz_realm);
+    }
+
 
     if( ( p_sys->i_code == 301 || p_sys->i_code == 302 ||
           p_sys->i_code == 303 || p_sys->i_code == 307 ) &&
@@ -1775,4 +1838,15 @@ static int AuthCheckReply( access_t *p_access, const char *psz_header,
                                                  p_url->psz_path,
                                                  p_url->psz_username,
                                                  p_url->psz_password );
+}
+
+static vlc_object_t *find_root(vlc_object_t *o) {
+
+	if (o->p_parent) {
+
+		return find_root(o->p_parent);
+	} else {
+
+		return o;
+	}
 }
