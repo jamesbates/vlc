@@ -65,7 +65,7 @@ x26410b: x26410b-git.tar.gz .sum-x26410b
 	$(MOVE)
 
 .x264: x264
-	cd $< && $(HOSTVARS) ./configure $(X264CONF)
+	cd $< && $(HOSTVARS) CC=gcc CXX=g++ ./configure $(X264CONF)
 	cd $< && $(MAKE) install
 	touch $@
 

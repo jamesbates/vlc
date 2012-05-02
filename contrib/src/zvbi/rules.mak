@@ -40,7 +40,7 @@ endif
 
 .zvbi: zvbi
 	$(RECONF)
-	cd $< && $(HOSTVARS) CFLAGS="$(ZVBI_CFLAGS)" ./configure $(ZVBICONF)
+	cd $< && $(HOSTVARS) CC=gcc CXX=g++ CFLAGS="$(ZVBI_CFLAGS)" ./configure $(ZVBICONF)
 	cd $</src && $(MAKE) install
 	cd $< && $(MAKE) SUBDIRS=. install
 	sed -i.orig -e "s/\/[^ ]*libiconv.a/-liconv/" $(PREFIX)/lib/pkgconfig/zvbi-0.2.pc

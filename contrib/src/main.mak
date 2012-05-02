@@ -120,10 +120,10 @@ EXTRA_CFLAGS += -mfloat-abi=softfp $(ANDROID_CPU_FLAGS)
 endif
 
 ifdef HAVE_MACOSX
-MIN_OSX_VERSION=10.5
+MIN_OSX_VERSION?=10.5
 MACOSX_SDK=/Developer/SDKs/MacOSX$(OSX_VERSION).sdk
-CC=gcc-4.2
-CXX=g++-4.2
+CC?=gcc-4.2
+CXX?=g++-4.2
 AR=ar
 LD=ld
 STRIP=strip
@@ -372,7 +372,7 @@ prebuilt: vlc-contrib-$(HOST)-latest.tar.bz2
 	$(UNPACK) && mv $(HOST) $(TOPDST)
 	cd $(TOPDST)/$(HOST) && ./change_prefix.sh
 
-package: install
+package: 
 	rm -Rf tmp/
 	mkdir -p tmp/
 	cp -r $(PREFIX) tmp/
