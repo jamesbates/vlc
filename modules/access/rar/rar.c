@@ -66,6 +66,7 @@ enum {
     RAR_BLOCK_MARKER = 0x72,
     RAR_BLOCK_ARCHIVE = 0x73,
     RAR_BLOCK_FILE = 0x74,
+    RAR_BLOCK_SUBBLOCK = 0x7a,
     RAR_BLOCK_END = 0x7b,
 };
 enum {
@@ -90,7 +91,9 @@ static int PeekBlock(stream_t *s, rar_block_t *hdr)
     hdr->flags = GetWLE(&peek[3]);
     hdr->size  = GetWLE(&peek[5]);
     hdr->add_size = 0;
-    if (hdr->flags & 0x8000) {
+    if ((hdr->flags & 0x8000) ||
+        hdr->type == RAR_BLOCK_FILE ||
+        hdr->type == RAR_BLOCK_SUBBLOCK) {
         if (peek_size < 11)
             return VLC_EGENERIC;
         hdr->add_size = GetDWLE(&peek[7]);
@@ -286,7 +289,7 @@ static const rar_pattern_t *FindVolumePattern(const char *location)
         { ".part1.rar",   "%s.part%.1d.rar", 2,   9 },
         { ".part01.rar",  "%s.part%.2d.rar", 2,  99, },
         { ".part001.rar", "%s.part%.3d.rar", 2, 999 },
-        { ".rar",         "%s.r%.2d",        0,  99 },
+        { ".rar",         "%s.%c%.2d",       0, 999 },
         { NULL, NULL, 0, 0 },
     };
 
@@ -376,8 +379,14 @@ int RarParse(stream_t *s, int *count, rar_file_t ***file)
         }
 
         free(volume_mrl);
-        if (asprintf(&volume_mrl, pattern->format, volume_base, volume_index) < 0)
-            volume_mrl = NULL;
+        if (pattern->start) {
+            if (asprintf(&volume_mrl, pattern->format, volume_base, volume_index) < 0)
+                volume_mrl = NULL;
+        } else {
+            if (asprintf(&volume_mrl, pattern->format, volume_base,
+                         'r' + volume_index / 100, volume_index % 100) < 0)
+                volume_mrl = NULL;
+        }
         free(volume_base);
 
         if (!volume_mrl)

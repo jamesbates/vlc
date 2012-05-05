@@ -27,7 +27,6 @@
 #endif
 
 #include <errno.h>
-#include <time.h>
 #include <sys/types.h>
 #include <errno.h>
 
@@ -276,6 +275,10 @@ static const error_msg_t cert_errors[] =
         "Certificate's signer is not a CA" },
     { GNUTLS_CERT_INSECURE_ALGORITHM,
         "Insecure certificate signature algorithm" },
+    { GNUTLS_CERT_NOT_ACTIVATED,
+        "Certificate is not yet activated" },
+    { GNUTLS_CERT_EXPIRED,
+        "Certificate has expired" },
     { 0, NULL }
 };
 
@@ -301,7 +304,7 @@ static int gnutls_HandshakeAndValidate (vlc_tls_t *session)
 
     if (status)
     {
-        msg_Err (session, "TLS session: access denied");
+        msg_Err (session, "TLS session: access denied (status 0x%X)", status);
         for (const error_msg_t *e = cert_errors; e->flag; e++)
         {
             if (status & e->flag)
@@ -346,21 +349,6 @@ static int gnutls_HandshakeAndValidate (vlc_tls_t *session)
      && !gnutls_x509_crt_check_hostname (cert, sys->hostname))
     {
         msg_Err (session, "Certificate does not match \"%s\"", sys->hostname);
-        goto error;
-    }
-
-    time_t now;
-    time (&now);
-
-    if (gnutls_x509_crt_get_expiration_time (cert) < now)
-    {
-        msg_Err (session, "Certificate expired");
-        goto error;
-    }
-
-    if (gnutls_x509_crt_get_activation_time (cert) > now)
-    {
-        msg_Err( session, "Certificate not yet valid" );
         goto error;
     }
 
@@ -738,7 +726,7 @@ error:
 static int gnutls_ServerAddCA (vlc_tls_creds_t *server, const char *ca_path)
 {
     vlc_tls_creds_sys_t *sys = server->sys;
-    char *local_path = ToLocale (ca_path);
+    const char *local_path = ToLocale (ca_path);
 
     int val = gnutls_certificate_set_x509_trust_file (sys->x509_cred,
                                                       local_path,
@@ -769,7 +757,7 @@ static int gnutls_ServerAddCA (vlc_tls_creds_t *server, const char *ca_path)
 static int gnutls_ServerAddCRL (vlc_tls_creds_t *server, const char *crl_path)
 {
     vlc_tls_creds_sys_t *sys = server->sys;
-    char *local_path = ToLocale (crl_path);
+    const char *local_path = ToLocale (crl_path);
 
     int val = gnutls_certificate_set_x509_crl_file (sys->x509_cred,
                                                     local_path,
