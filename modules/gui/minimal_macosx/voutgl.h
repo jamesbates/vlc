@@ -48,3 +48,10 @@ struct vout_sys_t
     bool                b_clipped_out;
     Rect                clipBounds, viewBounds;
 };
+
+struct vout_window_sys_t
+{
+    NSAutoreleasePool *o_pool;
+};
+
+

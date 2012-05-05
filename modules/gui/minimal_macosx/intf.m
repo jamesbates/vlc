@@ -54,6 +54,7 @@ static void Run ( intf_thread_t *p_intf );
 int OpenIntf ( vlc_object_t *p_this )
 {
     intf_thread_t *p_intf = (intf_thread_t*) p_this;
+	msg_Dbg( p_intf, "## Opening the Minimal Mac OS X module" );
 
     p_intf->p_sys = malloc( sizeof( intf_sys_t ) );
     if( p_intf->p_sys == NULL )
@@ -110,7 +111,7 @@ static void * KillerThread( void *user_data )
     vlc_mutex_destroy( &p_intf->p_sys->lock );
     vlc_cond_destroy( &p_intf->p_sys->wait );
 
-    msg_Dbg( p_intf, "Killing the Minimal Mac OS X module" );
+    msg_Dbg( p_intf, "## Killing the Minimal Mac OS X module" );
 
     /* We are dead, terminate */
     [NSApp terminate: nil];
@@ -123,6 +124,8 @@ static void * KillerThread( void *user_data )
  *****************************************************************************/
 static void Run( intf_thread_t *p_intf )
 {
+	msg_Dbg( p_intf, "## Running the Minimal Mac OS X module" );
+
     sigset_t set;
 
     /* Make sure the "force quit" menu item does quit instantly.
