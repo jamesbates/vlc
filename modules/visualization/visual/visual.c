@@ -178,8 +178,7 @@ static int Open( vlc_object_t *p_this )
     char *psz_effects, *psz_parser;
     video_format_t fmt;
 
-    if( ( p_filter->fmt_in.audio.i_format != VLC_CODEC_FL32 &&
-          p_filter->fmt_in.audio.i_format != VLC_CODEC_FI32 ) )
+    if( p_filter->fmt_in.audio.i_format != VLC_CODEC_FL32 )
     {
         return VLC_EGENERIC;
     }
@@ -198,6 +197,8 @@ static int Open( vlc_object_t *p_this )
     if( (p_sys->i_height % 2 ) != 0 ) p_sys->i_height--;
     if( (p_sys->i_width % 2 )  != 0 ) p_sys->i_width--;
 
+    vlc_mutex_init( &p_sys->lock );
+    p_sys->b_close = false;
     p_sys->i_effect = 0;
     p_sys->effect   = NULL;
 
@@ -323,13 +324,16 @@ static block_t *DoWork( filter_t *p_filter, block_t *p_in_buf )
     picture_t *p_outpic;
 
     /* First, get a new picture */
-    while( ( p_outpic = vout_GetPicture( p_sys->p_vout ) ) == NULL)
-    {   /* XXX: This looks like a bad idea. Don't run to me for sympathy if it
-         * dead locks... */
-        if( !vlc_object_alive (p_sys->p_vout) )
+    do
+    {
+        vlc_mutex_lock( &p_sys->lock );
+        bool close = p_sys->b_close;
+        vlc_mutex_unlock( &p_sys->lock );
+        if( close )
             return NULL;
         msleep( VOUT_OUTMEM_SLEEP );
     }
+    while( ( p_outpic = vout_GetPicture( p_sys->p_vout ) ) == NULL);
 
     /* Blank the picture */
     for( int i = 0 ; i < p_outpic->i_planes ; i++ )
@@ -364,6 +368,10 @@ static void Close( vlc_object_t *p_this )
     filter_t * p_filter = (filter_t *)p_this;
     filter_sys_t *p_sys = p_filter->p_sys;
 
+    vlc_mutex_lock( &p_sys->lock );
+    p_sys->b_close = true;
+    vlc_mutex_unlock( &p_sys->lock );
+
     if( p_filter->p_sys->p_vout )
     {
         aout_filter_RequestVout( p_filter, p_filter->p_sys->p_vout, 0 );
@@ -373,20 +381,23 @@ static void Close( vlc_object_t *p_this )
     for( int i = 0; i < p_sys->i_effect; i++ )
     {
 #define p_effect p_sys->effect[i]
-        if( !strncmp( p_effect->psz_name, "spectrum", strlen( "spectrum" ) ) )
+        if( p_effect->p_data != NULL )
         {
-            spectrum_data *p_data = p_effect->p_data;
-            free( p_data->peaks );
-            free( p_data->prev_heights );
-            free( p_data->p_prev_s16_buff );
+            if( !strncmp( p_effect->psz_name, "spectrum", strlen( "spectrum" ) ) )
+            {
+                spectrum_data* p_data = p_effect->p_data;
+                free( p_data->peaks );
+                free( p_data->prev_heights );
+                free( p_data->p_prev_s16_buff );
+            }
+            if( !strncmp( p_effect->psz_name, "spectrometer", strlen( "spectrometer" ) ) )
+            {
+                spectrometer_data* p_data = p_effect->p_data;
+                free( p_data->peaks );
+                free( p_data->p_prev_s16_buff );
+            }
+            free( p_effect->p_data );
         }
-        if( !strncmp( p_effect->psz_name, "spectrometer", strlen( "spectrometer" ) ) )
-        {
-            spectrometer_data *p_data = p_effect->p_data;
-            free( p_data->peaks );
-            free( p_data->p_prev_s16_buff );
-        }
-        free( p_effect->p_data );
         free( p_effect->psz_args );
         free( p_effect );
 #undef p_effect
@@ -394,4 +405,6 @@ static void Close( vlc_object_t *p_this )
 
     free( p_sys->effect );
     free( p_filter->p_sys );
+
+    vlc_mutex_destroy( &p_sys->lock );
 }

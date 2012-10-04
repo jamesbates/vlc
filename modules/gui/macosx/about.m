@@ -1,7 +1,7 @@
 /*****************************************************************************
  * about.m: MacOS X About Panel
  *****************************************************************************
- * Copyright (C) 2001-2011 VLC authors and VideoLAN
+ * Copyright (C) 2001-2012 VLC authors and VideoLAN
  * $Id$
  *
  * Authors: Derk-Jan Hartman <thedj@users.sourceforge.net>
@@ -53,25 +53,29 @@ static VLAboutBox *_o_sharedInstance = nil;
 
 - (id)init
 {
-    if (_o_sharedInstance) {
+    if (_o_sharedInstance)
         [self dealloc];
-    } else {
+    else
         _o_sharedInstance = [super init];
-    }
- 
+
     return _o_sharedInstance;
 }
 
 - (void) dealloc
 {
     [[NSNotificationCenter defaultCenter] removeObserver: self];
+    [o_color_backdrop release];
     [super dealloc];
 }
 
 - (void)awakeFromNib
 {
-    if (OSX_LION)
+    if (!OSX_SNOW_LEOPARD)
         [o_about_window setCollectionBehavior: NSWindowCollectionBehaviorFullScreenAuxiliary];
+
+    /* add a colored backdrop to get a white window background */
+    o_color_backdrop = [[VLAboutColoredBackdrop alloc] initWithFrame: [[o_about_window contentView] frame]];
+    [[o_about_window contentView] addSubview: o_color_backdrop positioned: NSWindowBelow relativeTo: nil];
 }
 
 /*****************************************************************************
@@ -80,8 +84,7 @@ static VLAboutBox *_o_sharedInstance = nil;
 
 - (void)showAbout
 {
-    if(! b_isSetUp )
-    {
+    if (! b_isSetUp) {
         /* Get the localized info dictionary (InfoPlist.strings) */
         NSDictionary *o_local_dict;
         o_local_dict = [[NSBundle mainBundle] localizedInfoDictionary];
@@ -108,8 +111,7 @@ static VLAboutBox *_o_sharedInstance = nil;
 
         NSMutableArray *tmpArray = [NSMutableArray arrayWithArray: [[NSString stringWithUTF8String: psz_authors]componentsSeparatedByString:@"\n\n"]];
         NSUInteger count = [tmpArray count];
-        for( NSUInteger i = 0; i < count; i++ )
-        {
+        for (NSUInteger i = 0; i < count; i++) {
             [tmpArray replaceObjectAtIndex:i withObject:[[tmpArray objectAtIndex:i]stringByReplacingOccurrencesOfString:@"\n" withString:@", "]];
             [tmpArray replaceObjectAtIndex:i withObject:[[tmpArray objectAtIndex:i]stringByReplacingOccurrencesOfString:@", -" withString:@"\n-" options:0 range:NSRangeFromString(@"0 30")]];
             [tmpArray replaceObjectAtIndex:i withObject:[[tmpArray objectAtIndex:i]stringByReplacingOccurrencesOfString:@"-, " withString:@"-\n" options:0 range:NSRangeFromString(@"0 30")]];
@@ -118,7 +120,7 @@ static VLAboutBox *_o_sharedInstance = nil;
         NSString *authors = [tmpArray componentsJoinedByString:@"\n\n"];
 
         /* setup the authors and thanks field */
-        [o_credits_textview setString: [NSString stringWithFormat: @"%@\n\n\n\n\n\n%@\n\n%@\n\n", 
+        [o_credits_textview setString: [NSString stringWithFormat: @"%@\n\n\n\n\n\n%@\n\n%@\n\n",
                                         [_NS(INTF_ABOUT_MSG) stringByReplacingOccurrencesOfString:@"\n" withString:@" "],
                                         authors,
                                         [[NSString stringWithUTF8String: psz_thanks] stringByReplacingOccurrencesOfString:@"\n" withString:@" " options:0 range:NSRangeFromString(@"680 2")]]];
@@ -136,7 +138,7 @@ static VLAboutBox *_o_sharedInstance = nil;
 
     /* Show the window */
     b_restart = YES;
-    [o_credits_textview scrollPoint:NSMakePoint( 0, 0 )];
+    [o_credits_textview scrollPoint:NSMakePoint(0, 0)];
     [o_about_window makeKeyAndOrderFront: nil];
 }
 
@@ -156,8 +158,7 @@ static VLAboutBox *_o_sharedInstance = nil;
 
 - (void)scrollCredits:(NSTimer *)timer
 {
-    if( b_restart )
-    {
+    if (b_restart) {
         /* Reset the starttime */
         i_start = [NSDate timeIntervalSinceReferenceDate] + 4.0;
         f_current = 0;
@@ -165,24 +166,20 @@ static VLAboutBox *_o_sharedInstance = nil;
         b_restart = NO;
     }
 
-    if( [NSDate timeIntervalSinceReferenceDate] >= i_start )
-    {
+    if ([NSDate timeIntervalSinceReferenceDate] >= i_start) {
         /* Increment the scroll position */
         f_current += 0.005;
 
         /* Scroll to the position */
-        [o_credits_textview scrollPoint:NSMakePoint( 0, f_current )];
+        [o_credits_textview scrollPoint:NSMakePoint(0, f_current)];
 
         /* If at end, restart at the top */
-        if( f_current >= f_end )
-        {
+        if (f_current >= f_end) {
             /* f_end may be wrong on first run, so don't trust it too much */
-            if( f_end == [o_credits_textview bounds].size.height - [o_credits_scrollview bounds].size.height ) 
-            {
+            if (f_end == [o_credits_textview bounds].size.height - [o_credits_scrollview bounds].size.height) {
                 b_restart = YES;
-                [o_credits_textview scrollPoint:NSMakePoint( 0, 0 )];
-            }
-            else
+                [o_credits_textview scrollPoint:NSMakePoint(0, 0)];
+            } else
                 f_end = [o_credits_textview bounds].size.height - [o_credits_scrollview bounds].size.height;
         }
     }
@@ -227,8 +224,17 @@ static VLAboutBox *_o_sharedInstance = nil;
 - (void)webView:(WebView *)sender didFinishLoadForFrame:(WebFrame *)frame
 {
     /* delegate to update button states (we're the frameLoadDelegate for our help's webview)« */
-    [o_help_fwd_btn setEnabled: [o_help_web_view canGoForward]]; 
+    [o_help_fwd_btn setEnabled: [o_help_web_view canGoForward]];
     [o_help_bwd_btn setEnabled: [o_help_web_view canGoBack]];
+}
+
+@end
+
+@implementation VLAboutColoredBackdrop
+
+- (void)drawRect:(NSRect)rect {
+    [[NSColor whiteColor] setFill];
+    NSRectFill(rect);
 }
 
 @end

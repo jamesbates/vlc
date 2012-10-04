@@ -2717,7 +2717,7 @@ msgstr "Liste af foretrukne encodere"
 msgid ""
 "When several video formats are available, select one whose resolution is "
 "closest to (but not higher than) this setting, in number of lines. Use this "
-"option if you don't have enough CPU power or network bandwith to play higher "
+"option if you don't have enough CPU power or network bandwidth to play higher "
 "resolutions."
 msgstr ""
 
@@ -30301,14 +30301,6 @@ msgstr "&Sæt i kø"
 #, fuzzy
 #~ msgid "Automate picture coding mode"
 #~ msgstr "Decoding"
-
-#~ msgid ""
-#~ "This is the relative default size of the fonts that will be rendered on "
-#~ "the video. If absolute font size is set, relative size will be overriden."
-#~ msgstr ""
-#~ "Dette er den relative standardstørrelse af de skrifttyper, der vil blive "
-#~ "anvendt på videoen. Hvis du angiver en fast skriftstørrelse, anvendes "
-#~ "dette i stedet for relativ størrelse."
 
 #~ msgid "...when VLC is in background"
 #~ msgstr "...når VLC er i baggrunden"

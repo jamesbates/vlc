@@ -54,13 +54,13 @@ class SpeedControlWidget;
 class QVBoxLayout;
 class QMenu;
 class QSize;
+class StandardPLPanel;
 
 enum {
     CONTROLS_VISIBLE  = 0x1,
     CONTROLS_HIDDEN   = 0x2,
     CONTROLS_ADVANCED = 0x4,
 };
-
 
 class MainInterface : public QVLCMW
 {
@@ -72,6 +72,8 @@ public:
     /* tors */
     MainInterface( intf_thread_t *);
     virtual ~MainInterface();
+
+    static const QEvent::Type ToolbarsNeedRebuild;
 
     /* Video requests from core */
     WId  getVideo( int *pi_x, int *pi_y,
@@ -86,6 +88,7 @@ public:
     int getControlsVisibilityStatus();
     bool isPlDocked() { return ( b_plDocked != false ); }
     bool isInterfaceFullScreen() { return b_interfaceFullScreen; }
+    StandardPLPanel* getPlaylistView();
 
 protected:
     void dropEventPlay( QDropEvent* event, bool b_play ) { dropEventPlay(event, b_play, true); }
@@ -101,6 +104,7 @@ protected:
     virtual void closeEvent( QCloseEvent *);
     virtual void keyPressEvent( QKeyEvent *);
     virtual void wheelEvent( QWheelEvent * );
+    virtual bool eventFilter(QObject *, QEvent *);
 
 private:
     /* Main Widgets Creation */
@@ -189,6 +193,7 @@ public slots:
     void toggleFSC();
 
     void setStatusBarVisibility(bool b_visible);
+    void setPlaylistVisibility(bool b_visible);
 
     void popupMenu( const QPoint& );
 #ifdef WIN32
@@ -204,6 +209,7 @@ public slots:
     void emitRaise();
 
     void reloadPrefs();
+    void toolBarConfUpdated();
 
 private slots:
     void debug();

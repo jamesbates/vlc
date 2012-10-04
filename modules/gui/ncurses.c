@@ -39,6 +39,7 @@
 #include <assert.h>
 #include <wchar.h>
 #include <sys/stat.h>
+#include <math.h>
 
 #include <vlc_common.h>
 #include <vlc_plugin.h>
@@ -1068,7 +1069,7 @@ static int DrawStatus(intf_thread_t *intf)
             };
             char buf1[MSTRTIME_MAX_SIZE];
             char buf2[MSTRTIME_MAX_SIZE];
-            unsigned i_volume;
+            float volume;
 
         case INIT_S:
         case END_S:
@@ -1089,9 +1090,13 @@ static int DrawStatus(intf_thread_t *intf)
 
             mvnprintw(y++, 0, COLS, _(" Position : %s/%s"), buf1, buf2);
 
-            i_volume = aout_VolumeGet(p_playlist);
-            mvnprintw(y++, 0, COLS, _(" Volume   : %u%%"),
-                      i_volume*100/AOUT_VOLUME_DEFAULT);
+            volume = aout_VolumeGet(p_playlist);
+            if (volume >= 0.f)
+                mvnprintw(y++, 0, COLS, _(" Volume   : %3ld%%"),
+                          lroundf(volume * 100.f));
+            else
+                mvnprintw(y++, 0, COLS, _(" Volume   : ----"),
+                          lroundf(volume * 100.f));
 
             if (!var_Get(p_input, "title", &val)) {
                 int i_title_count = var_CountChoices(p_input, "title");
@@ -1404,8 +1409,7 @@ static bool HandleBrowseKey(intf_thread_t *intf, int key)
             return true;
         }
 
-        char *uri = make_URI(path, dir_entry->file ? "file"
-                                                             : "directory");
+        char *uri = vlc_path2uri(path, "file");
         free(path);
         if (uri == NULL)
             return true;
@@ -1442,7 +1446,7 @@ static bool HandleBrowseKey(intf_thread_t *intf, int key)
 static void OpenSelection(intf_thread_t *intf)
 {
     intf_sys_t *sys = intf->p_sys;
-    char *uri = make_URI(sys->open_chain, NULL);
+    char *uri = vlc_path2uri(sys->open_chain, NULL);
     if (uri == NULL)
         return;
 

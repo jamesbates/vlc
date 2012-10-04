@@ -42,6 +42,7 @@
 #include <QFrame>
 #include <QLabel>
 #include <QMouseEvent>
+#include <QPropertyAnimation>
 
 class ResizeEvent;
 class QPixmap;
@@ -93,9 +94,11 @@ private:
     QString pixmapUrl;
     bool b_expandPixmap;
     bool b_withart;
+    QPropertyAnimation *fadeAnimation;
     virtual void contextMenuEvent( QContextMenuEvent *event );
 protected:
     void paintEvent( QPaintEvent *e );
+    virtual void showEvent( QShowEvent * e );
     static const int MARGIN = 5;
 public slots:
     void toggle(){ TOGGLEV( this ); }
@@ -228,12 +231,13 @@ class CoverArtLabel : public QLabel
     Q_OBJECT
 public:
     CoverArtLabel( QWidget *parent, intf_thread_t * );
+    void setItem( input_item_t * );
     virtual ~CoverArtLabel();
 
 protected:
     virtual void mouseDoubleClickEvent( QMouseEvent *event )
     {
-        if( qobject_cast<MetaPanel *>(this->window()) == NULL )
+        if( ! p_item && qobject_cast<MetaPanel *>(this->window()) == NULL )
         {
             THEDP->mediaInfoDialog();
         }
@@ -241,20 +245,13 @@ protected:
     }
 private:
     intf_thread_t *p_intf;
+    input_item_t *p_item;
 
 public slots:
-    void requestUpdate() { emit updateRequested(); }
-    void update( )
-    {
-        requestUpdate();
-    }
     void showArtUpdate( const QString& );
-
-private slots:
+    void showArtUpdate( input_item_t * );
     void askForUpdate();
-
-signals:
-    void updateRequested();
+    void setArtFromFile();
 };
 
 #endif

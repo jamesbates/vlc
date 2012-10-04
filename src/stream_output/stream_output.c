@@ -100,7 +100,10 @@ sout_instance_t *sout_NewInstance( vlc_object_t *p_parent, const char *psz_dest 
     /* *** Allocate descriptor *** */
     p_sout = vlc_custom_create( p_parent, sizeof( *p_sout ), "stream output" );
     if( p_sout == NULL )
+    {
+        free( psz_chain );
         return NULL;
+    }
 
     msg_Dbg( p_sout, "using sout chain=`%s'", psz_chain );
 
@@ -617,7 +620,7 @@ static int mrl_Parse( mrl_t *p_mrl, const char *psz_mrl )
             psz_parser++;
         }
     }
-#if defined( WIN32 ) || defined( UNDER_CE ) || defined( __OS2__ )
+#if defined( WIN32 ) || defined( __OS2__ )
     if( psz_parser - psz_dup == 1 )
     {
         /* msg_Warn( p_sout, "drive letter %c: found in source string",

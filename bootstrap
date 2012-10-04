@@ -61,9 +61,9 @@ fi
 ###
 
 echo "generating modules/**/Makefile.am"
-find modules/ -name Modules.am | \
-sed -ne 's,modules/\(.*\)/Modules.am,\1,p' | \
-while read d; do
+for d in modules/*/Modules.am modules/*/*/Modules.am; do
+	d="${d#modules/}"
+	d="${d%/Modules.am}"
 	${CONFIG_SHELL-sh} modules/genmf "$d"
 	printf "."
 done
@@ -75,14 +75,8 @@ set -x
 ###  classic bootstrap stuff
 ###
 
-# Automake complains if these are not present
-echo > ABOUT-NLS
-cp -f INSTALL INSTALL.git
-
 autoreconf --install --force --verbose ${ACLOCAL_ARGS}
-rm -f po/Makevars.template ABOUT-NLS
-echo > ABOUT-NLS
-mv -f INSTALL.git INSTALL
+rm -f po/Makevars.template
 
 ##
 ##  files which need to be regenerated

@@ -16,9 +16,12 @@ AUTOCONF_URL=$(GNU)/autoconf/autoconf-$(AUTOCONF_VERSION).tar.bz2
 AUTOMAKE_VERSION=1.11.2
 AUTOMAKE_URL=$(GNU)/automake/automake-$(AUTOMAKE_VERSION).tar.gz
 
-PKGCFG_VERSION=0.23
+M4_VERSION=1.4.16
+M4_URL=$(GNU)/m4/m4-$(M4_VERSION).tar.gz
+
+PKGCFG_VERSION=0.27.1-1
 #PKGCFG_URL=http://downloads.videolan.org/pub/videolan/testing/contrib/pkg-config-$(PKGCFG_VERSION).tar.gz
-PKGCFG_URL=http://pkgconfig.freedesktop.org/releases/pkg-config-$(PKGCFG_VERSION).tar.gz
+PKGCFG_URL=http://sourceforge.net/projects/pkgconfiglite/files/$(PKGCFG_VERSION)/pkg-config-lite-$(PKGCFG_VERSION).tar.gz/download
 
 TAR_VERSION=1.26
 TAR_URL=$(GNU)/tar/tar-$(TAR_VERSION).tar.bz2
@@ -29,5 +32,8 @@ XZ_URL=http://tukaani.org/xz/xz-$(XZ_VERSION).tar.bz2
 OPENSSL_VERSION=1.0.0e
 OPENSSL_URL=http://www.openssl.org/source/openssl-$(OPENSSL_VERSION).tar.gz
 
-GAS_URL=https://github.com/yuvi/gas-preprocessor/tarball/master
-GAS_VERSION=867337f
+GAS_URL=https://github.com/mansr/gas-preprocessor/tarball/master
+GAS_VERSION=6b81e79
+
+RAGEL_VERSION=6.7
+RAGEL_URL=http://www.complang.org/ragel/ragel-$(RAGEL_VERSION).tar.gz

@@ -34,9 +34,11 @@
 #ifdef HAVE_UNISTD_H
 # include <unistd.h>
 #endif
+#include <fcntl.h>
 
 #include <vlc_common.h>
 #include <vlc_block.h>
+#include <vlc_fs.h>
 
 /**
  * @section Block handling functions.
@@ -98,8 +100,10 @@ void block_Init( block_t *restrict b, void *buf, size_t size )
 #endif
 }
 
-static void BlockRelease (block_t *block)
+static void block_generic_Release (block_t *block)
 {
+    /* That is always true for blocks allocated with block_Alloc(). */
+    assert (block->p_start == (unsigned char *)(block + 1));
     block_Invalidate (block);
     free (block);
 }
@@ -139,7 +143,7 @@ block_t *block_Alloc (size_t size)
     b->p_buffer += BLOCK_PADDING + BLOCK_ALIGN - 1;
     b->p_buffer = (void *)(((uintptr_t)b->p_buffer) & ~(BLOCK_ALIGN - 1));
     b->i_buffer = size;
-    b->pf_release = BlockRelease;
+    b->pf_release = block_generic_Release;
     return b;
 }
 
@@ -335,9 +339,6 @@ block_t *block_mmap_Alloc (void *addr, size_t length)
 
 #ifdef WIN32
 # include <io.h>
-# ifdef UNDER_CE
-#  define _get_osfhandle(a) ((long) (a))
-# endif
 
 static
 ssize_t pread (int fd, void *buf, size_t count, off_t offset)
@@ -355,35 +356,16 @@ ssize_t pread (int fd, void *buf, size_t count, off_t offset)
         return written;
     return -1;
 }
-#elif !defined( HAVE_PREAD )
-static
-ssize_t pread(int fd, const void * buf, size_t size, off_t offset) {
-    off_t offs0;
-    ssize_t rd;
-    if ((offs0 = lseek(fd, 0, SEEK_CUR)) == (off_t)-1) return -1;
-    if (lseek(fd, offset, SEEK_SET) == (off_t)-1) return -1;
-    rd = read(fd, (void *)buf, size);
-    if (lseek(fd, offs0, SEEK_SET) == (off_t)-1) return -1;
-    return rd;
-}
-
-static
-ssize_t pwrite(int fd, const void * buf, size_t size, off_t offset) {
-    off_t offs0;
-    ssize_t wr;
-    if ((offs0 = lseek(fd, 0, SEEK_CUR)) == (off_t)-1) return -1;
-    if (lseek(fd, offset, SEEK_SET) == (off_t)-1) return -1;
-    wr = write(fd, (void *)buf, size);
-    if (lseek(fd, offs0, SEEK_SET) == (off_t)-1) return -1;
-    return wr;
-}
 #endif
 
 /**
- * Loads a file into a block of memory. If possible a private file mapping is
- * created. Otherwise, the file is read normally. On 32-bits platforms, this
- * function will not work for very large files, due to memory space
- * constraints. Cancellation point.
+ * Loads a file into a block of memory through a file descriptor.
+ * If possible a private file mapping is created. Otherwise, the file is read
+ * normally. This function is a cancellation point.
+ *
+ * @note On 32-bits platforms,
+ * this function will not work for very large files,
+ * due to memory space constraints.
  *
  * @param fd file descriptor to load from
  * @return a new block with the file content at p_buffer, and file length at
@@ -452,6 +434,21 @@ block_t *block_File (int fd)
         i += len;
     }
     vlc_cleanup_pop ();
+    return block;
+}
+
+/**
+ * Loads a file into a block of memory from the file path.
+ * See also block_File().
+ */
+block_t *block_FilePath (const char *path)
+{
+    int fd = vlc_open (path, O_RDONLY);
+    if (fd == -1)
+        return NULL;
+
+    block_t *block = block_File (fd);
+    close (fd);
     return block;
 }
 

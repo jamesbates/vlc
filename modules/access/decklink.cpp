@@ -5,20 +5,19 @@
  *
  * Authors: Steinar H. Gunderson <steinar+vlc@gunderson.no>
  *
- * This library is free software; you can redistribute it and/or
- * modify it under the terms of the GNU Lesser General Public
- * License as published by the Free Software Foundation; either
- * version 2.1 of the License, or (at your option) any later version.
+ * This program is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU Lesser General Public License as published by
+ * the Free Software Foundation; either version 2.1 of the License, or
+ * (at your option) any later version.
  *
  * This library is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
  * Lesser General Public License for more details.
  *
- * You should have received a copy of the GNU Lesser General Public
- * License along with this library; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
- *
+ * You should have received a copy of the GNU Lesser General Public License
+ * along with this program; if not, write to the Free Software Foundation,
+ * Inc., 51 Franklin Street, Fifth Floor, Boston MA 02110-1301, USA.
  *****************************************************************************/
 
 #define __STDC_CONSTANT_MACROS 1
@@ -104,14 +103,14 @@ vlc_module_begin ()
                  MODE_TEXT, MODE_LONGTEXT, true )
     add_string( "decklink-audio-connection", 0,
                  AUDIO_CONNECTION_TEXT, AUDIO_CONNECTION_LONGTEXT, true )
-        change_string_list( ppsz_audioconns, ppsz_audioconns_text, 0 )
+        change_string_list( ppsz_audioconns, ppsz_audioconns_text )
     add_integer( "decklink-audio-rate", 48000,
                  RATE_TEXT, RATE_LONGTEXT, true )
     add_integer( "decklink-audio-channels", 2,
                  CHANNELS_TEXT, CHANNELS_LONGTEXT, true )
     add_string( "decklink-video-connection", 0,
                  VIDEO_CONNECTION_TEXT, VIDEO_CONNECTION_LONGTEXT, true )
-        change_string_list( ppsz_videoconns, ppsz_videoconns_text, 0 )
+        change_string_list( ppsz_videoconns, ppsz_videoconns_text )
     add_string( "decklink-aspect-ratio", NULL,
                 ASPECT_RATIO_TEXT, ASPECT_RATIO_LONGTEXT, true )
 

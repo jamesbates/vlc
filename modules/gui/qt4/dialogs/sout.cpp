@@ -84,7 +84,7 @@ SoutDialog::SoutDialog( QWidget *parent, intf_thread_t *_p_intf, const QString& 
 #define CC( x ) CONNECT( ui.x, currentIndexChanged( int ), this, updateMRL() );
 
     /* Misc */
-    CB( soutAll );  CS( ttl ); CT( sapName ); CT( sapGroup );
+    CB( soutAll );
     CB( localOutput ); CB( transcodeBox );
     CONNECT( ui.profileSelect, optionsChanged(), this, updateMRL() );
 
@@ -219,33 +219,8 @@ void SoutDialog::updateMRL()
 
     mrl = smrl.getMrl();
 
-    if( ui.sap->isChecked() )
-    {
-        QString group = ui.sapGroup->text();
-        QString name = ui.sapName->text();
-
-        /* FIXME: This sucks. We should really return a QStringList instead of
-         * (mis)quoting, concatainating and split input item paramters. */
-        name = name.replace( " ", " " );
-        group = group.replace( " ", " " );
-
-        /* We need to add options for both standard and rtp targets */
-        /* This is inelegant but simple and functional */
-        mrl.append( qfu( " :sout-rtp-sap" ) );
-        mrl.append( qfu( " :sout-rtp-name=" ) + name );
-        mrl.append( qfu( " :sout-standard-sap" ) );
-        mrl.append( qfu( " :sout-standard-name=" ) + name );
-        mrl.append( qfu( " :sout-standard-group=" ) + group );
-    }
-    else
-    {
-        mrl.append( qfu( " :no-sout-rtp-sap" ) );
-        mrl.append( qfu( " :no-sout-standard-sap" ) );
-    }
-
     if( ui.soutAll->isChecked() ) mrl.append( " :sout-all" );
 
-    mrl.append( qfu( " :ttl=" ) + QString::number( ui.ttl->value() ) );
     mrl.append( " :sout-keep" );
 
     ui.mrlEdit->setPlainText( mrl );

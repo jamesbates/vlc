@@ -55,6 +55,7 @@
 #include <vlc_fs.h>
 #include <vlc_strings.h>
 #include <vlc_modules.h>
+#include <vlc_playlist.h> // FIXME
 
 /*****************************************************************************
  * Local prototypes
@@ -1098,7 +1099,8 @@ static void LoadSlaves( input_thread_t *p_input )
         if( *psz == 0 )
             break;
 
-        char *uri = make_URI( psz, NULL );
+        char *uri = strstr(psz, "://")
+                                   ? strdup( psz ) : vlc_path2uri( psz, NULL );
         psz = psz_delim;
         if( uri == NULL )
             continue;
@@ -2041,10 +2043,7 @@ static bool Control( input_thread_t *p_input,
         case INPUT_CONTROL_ADD_SLAVE:
             if( val.psz_string )
             {
-                char *uri = make_URI( val.psz_string, NULL );
-                if( uri == NULL )
-                    break;
-
+                const char *uri = val.psz_string;
                 input_source_t *slave = InputSourceNew( p_input );
 
                 if( slave && !InputSourceInit( p_input, slave, uri, NULL, false ) )
@@ -2089,7 +2088,6 @@ static bool Control( input_thread_t *p_input,
                     free( slave );
                     msg_Warn( p_input, "failed to add %s as slave", uri );
                 }
-                free( uri );
             }
             break;
 
@@ -2253,6 +2251,18 @@ static void UpdateGenericFromDemux( input_thread_t *p_input )
         }
         p_demux->info.i_update &= ~INPUT_UPDATE_META;
     }
+    if( p_demux->info.i_update & INPUT_UPDATE_SIGNAL )
+    {
+        double quality;
+        double strength;
+
+        if( demux_Control( p_demux, DEMUX_GET_SIGNAL, &quality, &strength ) )
+            quality = strength = -1.;
+
+        input_SendEventSignal( p_input, quality, strength );
+
+        p_demux->info.i_update &= ~INPUT_UPDATE_SIGNAL;
+    }
 
     p_demux->info.i_update &= ~INPUT_UPDATE_SIZE;
 }
@@ -2335,7 +2345,7 @@ static int InputSourceInit( input_thread_t *p_input,
                             input_source_t *in, const char *psz_mrl,
                             const char *psz_forced_demux, bool b_in_can_fail )
 {
-    const char *psz_access, *psz_demux, *psz_path, *psz_anchor;
+    const char *psz_access, *psz_demux, *psz_path, *psz_anchor = NULL;
     char *psz_var_demux = NULL;
     double f_fps;
 
@@ -3144,7 +3154,7 @@ static void SubtitleAdd( input_thread_t *p_input, char *psz_subtitle, unsigned i
         free( psz_path );
     }
 
-    char *url = make_URI( psz_subtitle, "file" );
+    char *url = vlc_path2uri( psz_subtitle, NULL );
 
     var_Change( p_input, "spu-es", VLC_VAR_CHOICESCOUNT, &count, NULL );
 
@@ -3229,7 +3239,7 @@ char *input_CreateFilename( vlc_object_t *p_obj, const char *psz_path, const cha
     {
         closedir( path );
 
-        char *psz_tmp = str_format( p_obj, psz_prefix );
+        char *psz_tmp = str_format( pl_Get(p_obj), psz_prefix );
         if( !psz_tmp )
             return NULL;
 
@@ -3245,7 +3255,7 @@ char *input_CreateFilename( vlc_object_t *p_obj, const char *psz_path, const cha
     }
     else
     {
-        psz_file = str_format( p_obj, psz_path );
+        psz_file = str_format( pl_Get(p_obj), psz_path );
         path_sanitize( psz_file );
         return psz_file;
     }

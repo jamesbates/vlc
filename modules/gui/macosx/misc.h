@@ -1,7 +1,7 @@
 /*****************************************************************************
  * misc.h: code not specific to vlc
  *****************************************************************************
- * Copyright (C) 2003-2011 VLC authors and VideoLAN
+ * Copyright (C) 2003-2012 VLC authors and VideoLAN
  * $Id$
  *
  * Authors: Jon Lech Johansen <jon-vl@nanocrew.net>
@@ -26,12 +26,28 @@
 #import "CompatibilityFixes.h"
 
 /*****************************************************************************
+ * NSSound (VLCAdditions)
+ *
+ * added code to change the system volume, needed for the apple remote code
+ * this is simplified code, which won't let you set the exact volume
+ * (that's what the audio output is for after all), but just the system volume
+ * in steps of 1/16 (matching the default AR or volume key implementation).
+ *****************************************************************************/
+
+@interface NSSound (VLCAdditions)
++ (float)systemVolumeForChannel:(int)channel;
++ (bool)setSystemVolume:(float)volume forChannel:(int)channel;
++ (void)increaseSystemVolume;
++ (void)decreaseSystemVolume;
+@end
+
+/*****************************************************************************
  * NSAnimation (VLCAddition)
  *****************************************************************************/
 
 @interface NSAnimation (VLCAdditions)
-- (void)setUserInfo: (void *)userInfo;
-- (void *)userInfo;
+@property (readwrite) void * userInfo;
+
 @end
 
 /*****************************************************************************
@@ -42,45 +58,13 @@
 
 @interface NSScreen (VLCAdditions)
 
+@property (readonly) BOOL mainScreen;
+
 + (NSScreen *)screenWithDisplayID: (CGDirectDisplayID)displayID;
-- (BOOL)isMainScreen;
 - (BOOL)isScreen: (NSScreen*)screen;
 - (CGDirectDisplayID)displayID;
 - (void)blackoutOtherScreens;
 + (void)unblackoutScreens;
-@end
-
-/*****************************************************************************
- * VLCWindow
- *
- *  Missing extension to NSWindow
- *****************************************************************************/
-
-@interface VLCWindow : NSWindow <NSWindowDelegate>
-{
-    BOOL b_canBecomeKeyWindow;
-    BOOL b_isset_canBecomeKeyWindow;
-    BOOL b_isFullscreen;
-    NSViewAnimation *animation;
-}
-
-- (void)setCanBecomeKeyWindow: (BOOL)canBecomeKey;
-
-/* animate mode is only supported in >=10.4 */
-- (void)orderFront: (id)sender animate: (BOOL)animate;
-
-/* animate mode is only supported in >=10.4 */
-- (void)orderOut: (id)sender animate: (BOOL)animate;
-
-/* animate mode is only supported in >=10.4 */
-- (void)orderOut: (id)sender animate: (BOOL)animate callback:(NSInvocation *)callback;
-
-/* animate mode is only supported in >=10.4 */
-- (void)closeAndAnimate: (BOOL)animate;
-
-- (void)setFullscreen:(BOOL)b_var;
-
-- (BOOL)isFullscreen;
 @end
 
 
@@ -89,9 +73,6 @@
  *****************************************************************************/
 
 @interface VLBrushedMetalImageView : NSImageView
-{
-
-}
 
 @end
 
@@ -101,10 +82,19 @@
  *****************************************************************************/
 
 @interface MPSlider : NSSlider
-{
-}
 
 @end
+
+/*****************************************************************************
+ * ProgressView
+ *****************************************************************************/
+
+@interface VLCProgressView : NSView
+
+- (void)scrollWheel:(NSEvent *)o_event;
+
+@end
+
 
 /*****************************************************************************
  * TimeLineSlider
@@ -114,8 +104,9 @@
 {
     NSImage *o_knob_img;
     NSRect img_rect;
+    BOOL b_dark;
 }
-- (CGFloat)knobPosition;
+@property (readonly) CGFloat knobPosition;
 
 - (void)drawRect:(NSRect)rect;
 - (void)drawKnobInRect:(NSRect)knobRect;
@@ -123,10 +114,20 @@
 @end
 
 /*****************************************************************************
+ * VLCVolumeSliderCommon
+ *****************************************************************************/
+
+@interface VLCVolumeSliderCommon : NSSlider
+
+- (void)scrollWheel:(NSEvent *)o_event;
+
+@end
+
+/*****************************************************************************
  * ITSlider
  *****************************************************************************/
 
-@interface ITSlider : NSSlider
+@interface ITSlider : VLCVolumeSliderCommon
 {
     NSImage *img;
     NSRect image_rect;
@@ -149,16 +150,13 @@
     NSDictionary * o_string_attributes_dict;
     NSTextAlignment textAlignment;
 }
-
-- (BOOL)timeRemaining;
+@property (readonly) BOOL timeRemaining;
 @end
 
 /*****************************************************************************
  * VLCMainWindowSplitView interface
  *****************************************************************************/
 @interface VLCMainWindowSplitView : NSSplitView
-{
-}
 
 @end
 
@@ -179,8 +177,5 @@
  * VLCThreePartDropView interface
  *****************************************************************************/
 @interface VLCThreePartDropView : VLCThreePartImageView
-{
-
-}
 
 @end

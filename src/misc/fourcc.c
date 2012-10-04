@@ -33,6 +33,14 @@
 #include <vlc_es.h>
 #include <assert.h>
 
+
+typedef struct
+{
+    char p_class[4];
+    char p_fourcc[4];
+    char psz_description[56];
+} staticentry_t;
+
 typedef struct
 {
     char p_class[4];
@@ -57,7 +65,7 @@ typedef struct
 
 
 /* */
-static const entry_t p_list_video[] = {
+static const staticentry_t p_list_video[] = {
 
     B(VLC_CODEC_MPGV, "MPEG-1/2 Video"),
         A("mpgv"),
@@ -155,6 +163,7 @@ static const entry_t p_list_video[] = {
         A("SN40"),
         A("EPHV"),
         A("DM4V"),
+        A("SM4V"),
         /* XVID flavours */
         E("xvid", "Xvid MPEG-4 Video"),
         E("XVID", "Xvid MPEG-4 Video"),
@@ -184,6 +193,8 @@ static const entry_t p_list_video[] = {
         E("FFDS", "FFDShow MPEG-4"),
         E("VIDM", "vidm 4.01 codec"),
         E("DP02", "DynaPel MPEG-4 codec"),
+        E("PLV1", "Pelco DVR MPEG-4"),
+        E("QMP4", "QNAP Systems MPEG-4"),
         /* 3ivx delta 3.5 Unsupported
          * putting it here gives extreme distorted images */
         //E("3IV1", "3ivx delta 3.5 MPEG-4 Video"),
@@ -411,6 +422,7 @@ static const entry_t p_list_video[] = {
         E("CDVH", "Canopus DV Video"),
         E("cdvh", "Canopus DV Video"),
         E("CDV5", "Canopus DV Video"),
+        E("SLDV", "SoftLab DVCAM codec"),
 
     /* Windows Media Video */
     B(VLC_CODEC_WMV1, "Windows Media Video 7"),
@@ -533,23 +545,23 @@ static const entry_t p_list_video[] = {
         A("CLJR"),
 
     /* Real Video */
-    B(VLC_CODEC_RV10, "Real Video 1.0"),
+    B(VLC_CODEC_RV10, "RealVideo 1.0"),
         A("RV10"),
         A("rv10"),
 
-    B(VLC_CODEC_RV13, "Real Video 1.3"),
+    B(VLC_CODEC_RV13, "RealVideo 1.3"),
         A("RV13"),
         A("rv13"),
 
-    B(VLC_CODEC_RV20, "Real Video 2.0"),
+    B(VLC_CODEC_RV20, "RealVideo G2 (2.0)"),
         A("RV20"),
         A("rv20"),
 
-    B(VLC_CODEC_RV30, "Real Video 3.0"),
+    B(VLC_CODEC_RV30, "RealVideo 8 (3.0)"),
         A("RV30"),
         A("rv30"),
 
-    B(VLC_CODEC_RV40, "Real Video 4.0"),
+    B(VLC_CODEC_RV40, "RealVideo 9/10 (4.0)"),
         A("RV40"),
         A("rv40"),
 
@@ -677,11 +689,13 @@ static const entry_t p_list_video[] = {
         A("IV50"),
         A("iv50"),
 
-    B(VLC_CODEC_PRORES, "Apple ProRes 422"),
+    B(VLC_CODEC_PRORES, "Apple ProRes"),
+        E("apcn", "Apple ProRes 422 Standard"),
         E("apch", "Apple ProRes 422 HQ"),
         E("apcs", "Apple ProRes 422 LT"),
         E("apco", "Apple ProRes 422 Proxy"),
         E("ap4c", "Apple ProRes 4444"),
+        E("ap4h", "Apple ProRes 4444"),
 
     /* */
     B(VLC_CODEC_YV12, "Planar 4:2:0 YVU"),
@@ -916,15 +930,33 @@ static const entry_t p_list_video[] = {
         A("ULY0"),
         A("ULY2"),
 
-    B(VLC_CODEC_VBLE, "VBLE Lossless Codec"),
+    B(VLC_CODEC_VBLE, "VBLE Lossless"),
         A("VBLE"),
 
     B(VLC_CODEC_DXTORY, "Dxtory capture format"),
         A("xtor"),
 
+    B(VLC_CODEC_MSS1, "Windows Media Video 7 Screen"),
+        A("MSS1"),
+        A("mss1"),
+
+    B(VLC_CODEC_MSS2, "Windows Media Video 9 Screen"),
+        A("MSS2"),
+        A("mss2"),
+
+    B(VLC_CODEC_MSA1, "Microsoft Application Screen Decoder 1"),
+        A("MSA1"),
+
+    B(VLC_CODEC_TSC2, "TechSmith Screen Codec 2"),
+        A("MSA1"),
+        A("tsc2"),
+
+    B(VLC_CODEC_MTS2, "Microsoft Expression Encoder Screen"),
+        A("MTS2"),
+
     B(0, "")
 };
-static const entry_t p_list_audio[] = {
+static const staticentry_t p_list_audio[] = {
 
     /* Windows Media Audio 1 */
     B(VLC_CODEC_WMA1, "Windows Media Audio 1"),
@@ -1178,6 +1210,10 @@ static const entry_t p_list_audio[] = {
 
     B(VLC_CODEC_VORBIS, "Vorbis Audio"),
         A("vorb"),
+        A("vor1"),
+
+    B(VLC_CODEC_OPUS, "Opus Audio"),
+        A("Opus"),
 
     B(VLC_CODEC_302M, "302M Audio"),
         A("302m"),
@@ -1284,9 +1320,17 @@ static const entry_t p_list_audio[] = {
     B(VLC_CODEC_BMVAUDIO, "Discworld II BMV audio"),
         A("BMVA"),
 
+    B(VLC_CODEC_ULEAD_DV_AUDIO_NTSC, "Ulead DV audio NTSC"),
+        A("ms\x02\x15"),
+    B(VLC_CODEC_ULEAD_DV_AUDIO_PAL, "Ulead DV audio PAL"),
+        A("ms\x02\x16"),
+
+    B(VLC_CODEC_INDEO_AUDIO, "Indeo Audio Coder"),
+        A("ms\x04\x02"),
+
     B(0, "")
 };
-static const entry_t p_list_spu[] = {
+static const staticentry_t p_list_spu[] = {
 
     B(VLC_CODEC_SPU, "DVD Subtitles"),
         A("spu "),
@@ -1348,7 +1392,7 @@ static inline vlc_fourcc_t CreateFourcc( const char *psz_fourcc )
 }
 
 /* */
-static entry_t Lookup( const entry_t p_list[], vlc_fourcc_t i_fourcc )
+static entry_t Lookup( const staticentry_t p_list[], vlc_fourcc_t i_fourcc )
 {
     const char *p_class = NULL;
     const char *psz_description = NULL;
@@ -1357,7 +1401,7 @@ static entry_t Lookup( const entry_t p_list[], vlc_fourcc_t i_fourcc )
 
     for( int i = 0; ; i++ )
     {
-        const entry_t *p = &p_list[i];
+        const staticentry_t *p = &p_list[i];
         const vlc_fourcc_t i_entry_fourcc = CreateFourcc( p->p_fourcc );
         const vlc_fourcc_t i_entry_class = CreateFourcc( p->p_class );
 

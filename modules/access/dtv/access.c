@@ -200,11 +200,19 @@ static const char *const polarization_user[] = { N_("Unspecified (0V)"),
     "low noise block-downconverters (LNB) through a DiSEqC 1.0 switch, " \
     "the correct LNB can be selected (1 to 4). " \
     "If there is no switch, this parameter should be 0.")
-#ifdef __linux__
+#ifdef HAVE_LINUX_DVB
 static const int satno_vlc[] = { 0, 1, 2, 3, 4 };
 static const char *const satno_user[] = { N_("Unspecified"),
     "A/1", "B/2", "C/3", "D/4" };
 #endif
+
+#define UNCOMMITTED_TEXT N_("Uncommitted DiSEqC LNB number")
+#define UNCOMMITTED_LONGTEXT N_( \
+    "If the satellite receiver is connected to multiple " \
+    "low noise block-downconverters (LNB) through a cascade formed from " \
+    "DiSEqC 1.1 uncommitted switch and DiSEqC 1.0 committed switch, " \
+    "the correct uncommitted LNB can be selected (1 to 4). " \
+    "If there is no uncommitted switch, this parameter should be 0.")
 
 /* BDA module additional DVB-S Parameters */
 #define NETID_TEXT N_("Network identifier")
@@ -244,7 +252,7 @@ vlc_module_begin ()
 #endif
                  )
 
-#ifdef __linux__
+#ifdef HAVE_LINUX_DVB
     add_integer ("dvb-adapter", 0, ADAPTER_TEXT, ADAPTER_LONGTEXT, false)
         change_integer_range (0, 255)
         change_safe ()
@@ -277,17 +285,17 @@ vlc_module_begin ()
         change_integer_list (transmission_vlc, transmission_user)
         change_safe ()
     add_string ("dvb-guard", "", GUARD_TEXT, GUARD_TEXT, true)
-        change_string_list (guard_vlc, guard_user, NULL)
+        change_string_list (guard_vlc, guard_user)
         change_safe ()
 
     set_section (N_("DVB-T reception parameters"), NULL)
     add_string ("dvb-code-rate-hp", "",
                 CODE_RATE_HP_TEXT, CODE_RATE_LONGTEXT, true)
-        change_string_list (code_rate_vlc, code_rate_user, NULL)
+        change_string_list (code_rate_vlc, code_rate_user)
         change_safe ()
     add_string ("dvb-code-rate-lp", "",
                 CODE_RATE_LP_TEXT, CODE_RATE_LONGTEXT, true)
-        change_string_list (code_rate_vlc, code_rate_user, NULL)
+        change_string_list (code_rate_vlc, code_rate_user)
         change_safe ()
     add_integer ("dvb-hierarchy", -1, HIERARCHY_TEXT, HIERARCHY_TEXT, true)
         change_integer_list (hierarchy_vlc, hierarchy_user)
@@ -299,10 +307,10 @@ vlc_module_begin ()
     set_section (N_("ISDB-T reception parameters"), NULL)
     add_string ("dvb-a-modulation", NULL,
                 MODULATION_A_TEXT, MODULATION_LONGTEXT, true)
-        change_string_list (modulation_vlc, modulation_user, NULL)
+        change_string_list (modulation_vlc, modulation_user)
         change_safe ()
     add_string ("dvb-a-fec", NULL, CODE_RATE_A_TEXT, CODE_RATE_LONGTEXT, true)
-        change_string_list (code_rate_vlc, code_rate_user, NULL)
+        change_string_list (code_rate_vlc, code_rate_user)
         change_safe ()
     add_integer ("dvb-a-count", 0, SEGMENT_COUNT_A_TEXT, NULL, true)
         change_integer_range (0, 13)
@@ -312,10 +320,10 @@ vlc_module_begin ()
         change_safe ()
     add_string ("dvb-b-modulation", NULL,
                 MODULATION_B_TEXT, MODULATION_LONGTEXT, true)
-        change_string_list (modulation_vlc, modulation_user, NULL)
+        change_string_list (modulation_vlc, modulation_user)
         change_safe ()
     add_string ("dvb-b-fec", NULL, CODE_RATE_B_TEXT, CODE_RATE_LONGTEXT, true)
-        change_string_list (code_rate_vlc, code_rate_user, NULL)
+        change_string_list (code_rate_vlc, code_rate_user)
         change_safe ()
     add_integer ("dvb-b-count", 0, SEGMENT_COUNT_B_TEXT, NULL, true)
         change_integer_range (0, 13)
@@ -325,10 +333,10 @@ vlc_module_begin ()
         change_safe ()
     add_string ("dvb-c-modulation", NULL,
                 MODULATION_C_TEXT, MODULATION_LONGTEXT, true)
-        change_string_list (modulation_vlc, modulation_user, NULL)
+        change_string_list (modulation_vlc, modulation_user)
         change_safe ()
     add_string ("dvb-c-fec", NULL, CODE_RATE_C_TEXT, CODE_RATE_LONGTEXT, true)
-        change_string_list (code_rate_vlc, code_rate_user, NULL)
+        change_string_list (code_rate_vlc, code_rate_user)
         change_safe ()
     add_integer ("dvb-c-count", 0, SEGMENT_COUNT_C_TEXT, NULL, true)
         change_integer_range (0, 13)
@@ -340,13 +348,13 @@ vlc_module_begin ()
     set_section (N_("Cable and satellite reception parameters"), NULL)
     add_string ("dvb-modulation", NULL,
                  MODULATION_TEXT, MODULATION_LONGTEXT, false)
-        change_string_list (modulation_vlc, modulation_user, NULL)
+        change_string_list (modulation_vlc, modulation_user)
         change_safe ()
     add_integer ("dvb-srate", 0, SRATE_TEXT, SRATE_LONGTEXT, false)
         change_integer_range (0, UINT64_C(0xffffffff))
         change_safe ()
     add_string ("dvb-fec", "", CODE_RATE_TEXT, CODE_RATE_LONGTEXT, true)
-        change_string_list (code_rate_vlc, code_rate_user, NULL)
+        change_string_list (code_rate_vlc, code_rate_user)
         change_safe ()
 
     set_section (N_("DVB-S2 parameters"), NULL)
@@ -365,13 +373,13 @@ vlc_module_begin ()
     set_section (N_("Satellite equipment control"), NULL)
     add_string ("dvb-polarization", "",
                 POLARIZATION_TEXT, POLARIZATION_LONGTEXT, false)
-        change_string_list (polarization_vlc, polarization_user, NULL)
+        change_string_list (polarization_vlc, polarization_user)
         change_safe ()
     add_integer ("dvb-voltage", 13, "", "", true)
         change_integer_range (0, 18)
         change_private ()
         change_safe ()
-#ifdef __linux__
+#ifdef HAVE_LINUX_DVB
     add_bool ("dvb-high-voltage", false,
               HIGH_VOLTAGE_TEXT, HIGH_VOLTAGE_LONGTEXT, false)
 #endif
@@ -385,9 +393,13 @@ vlc_module_begin ()
                  LNB_SWITCH_TEXT, LNB_SWITCH_LONGTEXT, true)
         change_integer_range (0, 0x7fffffff)
     add_obsolete_integer ("dvb-lnb-slof") /* since 2.0.0 */
-#ifdef __linux__
+#ifdef HAVE_LINUX_DVB
     add_integer ("dvb-satno", 0, SATNO_TEXT, SATNO_LONGTEXT, true)
         change_integer_list (satno_vlc, satno_user)
+        change_safe ()
+    add_integer ("dvb-uncommitted", 0, UNCOMMITTED_TEXT, UNCOMMITTED_LONGTEXT, true)
+        change_integer_list (satno_vlc, satno_user)
+        change_safe ()
     add_integer ("dvb-tone", -1, TONE_TEXT, TONE_LONGTEXT, true)
         change_integer_list (auto_off_on_vlc, auto_off_on_user)
 #endif
@@ -684,7 +696,7 @@ static int Tune (vlc_object_t *obj, dvb_device_t *dev, const delsys_t *delsys,
 static uint64_t var_InheritFrequency (vlc_object_t *obj)
 {
     uint64_t freq = var_InheritInteger (obj, "dvb-frequency");
-    if (freq != 0 && freq <= 108000000)
+    if (freq != 0 && freq < 30000000)
     {
         msg_Err (obj, "%"PRIu64" Hz carrier frequency is too low.", freq);
         freq *= 1000;

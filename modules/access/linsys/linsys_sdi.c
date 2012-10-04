@@ -5,9 +5,9 @@
  *
  * Authors: Christophe Massiot <massiot@via.ecp.fr>
  *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
+ * This program is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU Lesser General Public License as published by
+ * the Free Software Foundation; either version 2.1 of the License, or
  * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
@@ -15,9 +15,9 @@
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
  *
- * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111, USA.
+ * You should have received a copy of the GNU Lesser General Public License
+ * along with this program; if not, write to the Free Software Foundation,
+ * Inc., 51 Franklin Street, Fifth Floor, Boston MA 02110-1301, USA.
  *****************************************************************************/
 
 #ifdef HAVE_CONFIG_H
@@ -948,7 +948,7 @@ static int DecodeAudio( demux_t *p_demux, sdi_audio_t *p_audio )
 
     if ( p_audio->i_left_samples == p_audio->i_nb_samples &&
          p_audio->i_right_samples == p_audio->i_nb_samples )
-        vlc_memcpy( p_output, p_audio->p_buffer,
+        memcpy( p_output, p_audio->p_buffer,
                     p_audio->i_nb_samples * sizeof(int16_t) * 2 );
     else
     {
@@ -975,8 +975,8 @@ static int DecodeFrame( demux_t *p_demux )
         {
             /* For PAL, erase first half of line 23, last half of line 623,
              * and line 624 ; no need to erase chrominance */
-            vlc_memset( p_sys->p_y, 0, p_sys->i_width / 2 );
-            vlc_memset( p_sys->p_y + p_sys->i_width * 574 + p_sys->i_width / 2,
+            memset( p_sys->p_y, 0, p_sys->i_width / 2 );
+            memset( p_sys->p_y + p_sys->i_width * 574 + p_sys->i_width / 2,
                         0, p_sys->i_width * 3 / 2 );
         }
     }
@@ -1054,7 +1054,7 @@ static const uint8_t *GetLine( demux_t *p_demux, const uint8_t **pp_parser,
     if ( p_sys->i_line_buffer )
     {
         unsigned int i_remaining = i_total_size - p_sys->i_line_buffer;
-        vlc_memcpy( p_sys->p_line_buffer + p_sys->i_line_buffer,
+        memcpy( p_sys->p_line_buffer + p_sys->i_line_buffer,
                                    *pp_parser, i_remaining );
         *pp_parser += i_remaining;
         p_sys->i_line_buffer = 0;
@@ -1064,7 +1064,7 @@ static const uint8_t *GetLine( demux_t *p_demux, const uint8_t **pp_parser,
 
     if ( p_end - *pp_parser < (int)i_total_size )
     {
-        vlc_memcpy( p_sys->p_line_buffer, *pp_parser,
+        memcpy( p_sys->p_line_buffer, *pp_parser,
                                    p_end - *pp_parser );
         p_sys->i_line_buffer = p_end - *pp_parser;
         return NULL;

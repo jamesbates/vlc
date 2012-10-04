@@ -22,6 +22,7 @@
 # include "config.h"
 #endif
 
+#include <math.h>
 #include <assert.h>
 
 #include <vlc_common.h>
@@ -42,20 +43,35 @@ vlc_module_begin ()
     set_callbacks (Open, Close )
 vlc_module_end ()
 
-static void Play  (audio_output_t *, block_t *);
+static void Play (audio_output_t *, block_t *, mtime_t *);
 static void Pause (audio_output_t *, bool, mtime_t);
+static int VolumeSet (audio_output_t *, float);
+static int MuteSet (audio_output_t *, bool);
+static void VolumeChanged (void *, unsigned);
+
+struct aout_sys_t
+{
+    struct sio_hdl *hdl;
+    unsigned volume;
+    bool mute;
+};
 
 /** Initializes an sndio playback stream */
 static int Open (vlc_object_t *obj)
 {
     audio_output_t *aout = (audio_output_t *)obj;
+    aout_sys_t *sys = malloc (sizeof (*sys));
+    if (unlikely(sys == NULL))
+        return VLC_EGENERIC;
 
-    struct sio_hdl *sio = sio_open (NULL, SIO_PLAY, 0 /* blocking */);
-    if (sio == NULL)
+    sys->hdl = sio_open (NULL, SIO_PLAY, 0 /* blocking */);
+    if (sys->hdl == NULL)
     {
         msg_Err (obj, "cannot create audio playback stream");
+        free (sys);
         return VLC_EGENERIC;
     }
+    aout->sys = sys;
 
     struct sio_par par;
     sio_initpar (&par);
@@ -67,7 +83,7 @@ static int Open (vlc_object_t *obj)
     par.rate = aout->format.i_rate;
     par.xrun = SIO_SYNC;
 
-    if (!sio_setpar (sio, &par) || !sio_getpar (sio, &par))
+    if (!sio_setpar (sys->hdl, &par) || !sio_getpar (sys->hdl, &par))
     {
         msg_Err (obj, "cannot negotiate audio playback parameters");
         goto error;
@@ -115,16 +131,16 @@ static int Open (vlc_object_t *obj)
             chans = AOUT_CHAN_CENTER;
             break;
         case 2:
-            chans = AOUT_CHAN_LEFT | AOUT_CHAN_RIGHT;
+            chans = AOUT_CHANS_STEREO;
             break;
         case 4:
-            chans = AOUT_CHAN_LEFT | AOUT_CHAN_RIGHT
-                  | AOUT_CHAN_REARLEFT | AOUT_CHAN_REARRIGHT;
+            chans = AOUT_CHANS_4_0;
             break;
         case 6:
-            chans = AOUT_CHAN_LEFT | AOUT_CHAN_RIGHT
-                  | AOUT_CHAN_REARLEFT | AOUT_CHAN_REARRIGHT
-                  | AOUT_CHAN_CENTER | AOUT_CHAN_LFE;
+            chans = AOUT_CHANS_5_1;
+            break;
+        case 8:
+            chans = AOUT_CHANS_7_1;
             break;
         default:
             msg_Err (aout, "unknown %u channels map", par.pchan);
@@ -135,44 +151,54 @@ static int Open (vlc_object_t *obj)
     aout_FormatPrepare (&f);
 
     aout->format = f;
-    aout->sys = (void *)sio;
+    aout->sys = sys;
     aout->pf_play = Play;
     aout->pf_pause = Pause;
     aout->pf_flush  = NULL; /* sndio sucks! */
-    aout_VolumeSoftInit (aout); /* TODO: sio_onvol() */
+    if (sio_onvol(sys->hdl, VolumeChanged, aout))
+    {
+        aout->volume_set = VolumeSet;
+        aout->mute_set = MuteSet;
+    }
+    else
+    {
+        aout->volume_set = NULL;
+        aout->mute_set = NULL;
+    }
 
-    sio_start (sio);
+    sio_start (sys->hdl);
     return VLC_SUCCESS;
 
 error:
-    sio_close (sio);
+    Close (obj);
     return VLC_EGENERIC;
 }
 
 static void Close (vlc_object_t *obj)
 {
     audio_output_t *aout = (audio_output_t *)obj;
-    struct sio_hdl *sio = (void *)aout->sys;
+    aout_sys_t *sys = aout->sys;
 
-    sio_close (sio);
+    sio_close (sys->hdl);
+    free (sys);
 }
 
-static void Play (audio_output_t *aout, block_t *block)
+static void Play (audio_output_t *aout, block_t *block,
+                  mtime_t *restrict drift)
 {
-    struct sio_hdl *sio = (void *)aout->sys;
+    aout_sys_t *sys = aout->sys;
     struct sio_par par;
 
-    if (sio_getpar (sio, &par) == 0)
+    if (sio_getpar (sys->hdl, &par) == 0)
     {
         mtime_t delay = par.bufsz * CLOCK_FREQ / aout->format.i_rate;
 
-        delay = block->i_pts - (mdate () - delay);
-        aout_TimeReport (aout, block->i_pts - delay);
+        *drift = mdate () + delay - block->i_pts;
     }
 
-    while (block->i_buffer > 0 && !sio_eof (sio))
+    while (block->i_buffer > 0 && !sio_eof (sys->hdl))
     {
-        size_t bytes = sio_write (sio, block->p_buffer, block->i_buffer);
+        size_t bytes = sio_write (sys->hdl, block->p_buffer, block->i_buffer);
 
         block->p_buffer += bytes;
         block->i_buffer -= bytes;
@@ -183,11 +209,44 @@ static void Play (audio_output_t *aout, block_t *block)
 
 static void Pause (audio_output_t *aout, bool pause, mtime_t date)
 {
-    struct sio_hdl *sio = (void *)aout->sys;
+    aout_sys_t *sys = aout->sys;
 
     if (pause)
-        sio_stop (sio);
+        sio_stop (sys->hdl);
     else
-        sio_start (sio);
+        sio_start (sys->hdl);
     (void) date;
+}
+
+static void VolumeChanged (void *arg, unsigned volume)
+{
+    audio_output_t *aout = arg;
+    float fvol = (float)volume / (float)SIO_MAXVOL;
+
+    aout_VolumeReport (aout, fvol);
+    aout_MuteReport (aout, volume == 0);
+    if (volume) /* remember last non-zero volume to unmute later */
+        aout->sys->volume = volume;
+}
+
+static int VolumeSet (audio_output_t *aout, float fvol)
+{
+    aout_sys_t *sys = aout->sys;
+    unsigned volume = lroundf (fvol * SIO_MAXVOL);
+
+    if (!sys->mute && !sio_setvol (sys->hdl, volume))
+        return -1;
+    sys->volume = volume;
+    return 0;
+}
+
+static int MuteSet (audio_output_t *aout, bool mute)
+{
+    aout_sys_t *sys = aout->sys;
+
+    if (!sio_setvol (sys->hdl, mute ? 0 : sys->volume))
+        return -1;
+
+    sys->mute = mute;
+    return 0;
 }

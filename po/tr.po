@@ -2680,7 +2680,7 @@ msgstr "Yeğlenen kod çözücüler listesi"
 msgid ""
 "When several video formats are available, select one whose resolution is "
 "closest to (but not higher than) this setting, in number of lines. Use this "
-"option if you don't have enough CPU power or network bandwith to play higher "
+"option if you don't have enough CPU power or network bandwidth to play higher "
 "resolutions."
 msgstr ""
 
@@ -30613,14 +30613,6 @@ msgstr "Kuyruğa &Ekle"
 #, fuzzy
 #~ msgid "Automate picture coding mode"
 #~ msgstr "Resim kodlama kipi"
-
-#~ msgid ""
-#~ "This is the relative default size of the fonts that will be rendered on "
-#~ "the video. If absolute font size is set, relative size will be overriden."
-#~ msgstr ""
-#~ "Bu değer görüntü üzerinde gösterilecek yazı tipinin varsayılan yaklaşık "
-#~ "büyüklüğüdür. Eğer kesin bir yazı tipi büyüklüğü belirtilirse, yaklaşık "
-#~ "büyüklük değerinin yerine geçer."
 
 #~ msgid "Use media key control when VLC is in background"
 #~ msgstr "VLC art alandayken medya tuşu denetimini kullan"

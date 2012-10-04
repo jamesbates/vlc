@@ -49,9 +49,16 @@
 #include <vlc_dialog.h>
 #include "opengl.h"
 
-@interface NSWindow (VLCCustomCode)
-- (BOOL)isFullscreen;
+/* compilation support for 10.5 and 10.6 */
+#define OSX_LION NSAppKitVersionNumber >= 1115.2
+#ifndef MAC_OS_X_VERSION_10_7
+
+@interface NSView (IntroducedInLion)
+- (NSRect)convertRectToBacking:(NSRect)aRect;
+- (void)setWantsBestResolutionOpenGLSurface:(BOOL)aBool;
 @end
+
+#endif
 
 /**
  * Forward declarations
@@ -78,7 +85,7 @@ vlc_module_begin ()
     set_shortname ("Mac OS X")
     set_description (N_("Mac OS X OpenGL video output (requires drawable-nsobject)"))
     set_category (CAT_VIDEO)
-    set_subcategory (SUBCAT_VIDEO_VOUT )
+    set_subcategory (SUBCAT_VIDEO_VOUT)
     set_capability ("vout display", 300)
     set_callbacks (Open, Close)
 
@@ -99,7 +106,6 @@ vlc_module_end ()
     BOOL _hasPendingReshape;
 }
 - (void)setVoutDisplay:(vout_display_t *)vd;
-- (vout_display_t *)voutDisplay;
 - (void)setVoutFlushing:(BOOL)flushing;
 @end
 
@@ -137,12 +143,10 @@ static int Open (vlc_object_t *this)
     if (!sys)
         return VLC_ENOMEM;
 
-    if (!CGDisplayUsesOpenGLAcceleration (kCGDirectMainDisplay))
-    {
+    if (!CGDisplayUsesOpenGLAcceleration (kCGDirectMainDisplay)) {
         msg_Err (this, "no OpenGL hardware acceleration found. this can lead to slow output and unexpected results");
         dialog_Fatal (this, _("OpenGL acceleration is not supported on your Mac"), _("Your Mac lacks Quartz Extreme acceleration, which is required for video output. It will still work, but much slower and with possibly unexpected results."));
-    }
-    else
+    } else
         msg_Dbg (this, "Quartz Extreme acceleration is active");
 
     vd->sys = sys;
@@ -153,11 +157,8 @@ static int Open (vlc_object_t *this)
     /* Get the drawable object */
     id container = var_CreateGetAddress (vd, "drawable-nsobject");
     if (container)
-    {
         vout_display_DeleteWindow (vd, NULL);
-    }
-    else
-    {
+    else {
         vout_window_cfg_t wnd_cfg;
 
         memset (&wnd_cfg, 0, sizeof (wnd_cfg));
@@ -171,8 +172,7 @@ static int Open (vlc_object_t *this)
         if (sys->embed)
             container = sys->embed->handle.nsobject;
 
-        if (!container)
-        {
+        if (!container) {
             msg_Dbg(vd, "No drawable-nsobject nor vout_window_t found, passing over.");
             goto error;
         }
@@ -196,14 +196,11 @@ static int Open (vlc_object_t *this)
      * That's why we'll release on main thread in Close(). */
     if ([(id)container respondsToSelector:@selector(addVoutSubview:)])
         [(id)container performSelectorOnMainThread:@selector(addVoutSubview:) withObject:sys->glView waitUntilDone:NO];
-    else if ([container isKindOfClass:[NSView class]])
-    {
+    else if ([container isKindOfClass:[NSView class]]) {
         NSView *parentView = container;
         [parentView performSelectorOnMainThread:@selector(addSubview:) withObject:sys->glView waitUntilDone:NO];
-        [sys->glView performSelectorOnMainThread:@selector(setFrameWithValue:) withObject:[NSValue valueWithRect:[parentView bounds]] waitUntilDone:NO];
-    }
-    else
-    {
+        [sys->glView performSelectorOnMainThread:@selector(setFrameToBoundsOfView:) withObject:[NSValue valueWithPointer:parentView] waitUntilDone:NO];
+    } else {
         msg_Err(vd, "Invalid drawable-nsobject object. drawable-nsobject must either be an NSView or comply to the @protocol VLCOpenGLVideoViewEmbedding.");
         goto error;
     }
@@ -222,8 +219,7 @@ static int Open (vlc_object_t *this)
     video_format_t fmt = vd->fmt;
 
     sys->vgl = vout_display_opengl_New (&vd->fmt, &subpicture_chromas, &sys->gl);
-    if (!sys->vgl)
-    {
+    if (!sys->vgl) {
         sys->gl.sys = NULL;
         goto error;
     }
@@ -233,6 +229,7 @@ static int Open (vlc_object_t *this)
     info.has_pictures_invalid = false;
     info.has_event_thread = true;
     info.subpicture_chromas = subpicture_chromas;
+    info.has_hide_mouse = true;
 
     /* Setup vout_display_t once everything is fine */
     vd->info = info;
@@ -258,17 +255,13 @@ void Close (vlc_object_t *this)
     vout_display_t *vd = (vout_display_t *)this;
     vout_display_sys_t *sys = vd->sys;
 
-    if ([[sys->glView window] level] != NSNormalWindowLevel)
-        [[sys->glView window] setLevel: NSNormalWindowLevel];
-
     [sys->glView setVoutDisplay:nil];
 
     var_Destroy (vd, "drawable-nsobject");
     if ([(id)sys->container respondsToSelector:@selector(removeVoutSubview:)])
-    {
         /* This will retain sys->glView */
         [(id)sys->container performSelectorOnMainThread:@selector(removeVoutSubview:) withObject:sys->glView waitUntilDone:NO];
-    }
+
     /* release on main thread as explained in Open() */
     [(id)sys->container performSelectorOnMainThread:@selector(release) withObject:nil waitUntilDone:NO];
     [sys->glView performSelectorOnMainThread:@selector(removeFromSuperview) withObject:nil waitUntilDone:NO];
@@ -334,11 +327,8 @@ static int Control (vout_display_t *vd, int query, va_list ap)
         }
         case VOUT_DISPLAY_CHANGE_WINDOW_STATE:
         {
-            NSAutoreleasePool * o_pool = [[NSAutoreleasePool alloc] init];
             unsigned state = va_arg (ap, unsigned);
-            [sys->glView performSelectorOnMainThread:@selector(setWindowLevel:) withObject:[NSNumber numberWithUnsignedInt:state] waitUntilDone:NO];
-            [o_pool release];
-            return VLC_SUCCESS;
+            return vout_window_SetState (sys->embed, state);            
         }
         case VOUT_DISPLAY_CHANGE_DISPLAY_FILLED:
         case VOUT_DISPLAY_CHANGE_ZOOM:
@@ -361,13 +351,10 @@ static int Control (vout_display_t *vd, int query, va_list ap)
             const video_format_t *source;
             bool is_forced = false;
 
-            if (query == VOUT_DISPLAY_CHANGE_SOURCE_ASPECT || query == VOUT_DISPLAY_CHANGE_SOURCE_CROP)
-            {
+            if (query == VOUT_DISPLAY_CHANGE_SOURCE_ASPECT || query == VOUT_DISPLAY_CHANGE_SOURCE_CROP) {
                 source = (const video_format_t *)va_arg (ap, const video_format_t *);
                 cfg = vd->cfg;
-            }
-            else
-            {
+            } else {
                 source = &vd->source;
                 cfg = (const vout_display_cfg_t*)va_arg (ap, const vout_display_cfg_t *);
                 if (query == VOUT_DISPLAY_CHANGE_DISPLAY_SIZE)
@@ -380,30 +367,30 @@ static int Control (vout_display_t *vd, int query, va_list ap)
                 && vout_window_SetSize (sys->embed, cfg->display.width, cfg->display.height))
                 return VLC_EGENERIC;
  
-            /* for the case that the core wants to resize below minimum window size we correct the size here
-             to ensure a centered picture */
+            /* we always use our current frame here, because we have some size constraints 
+               in the ui vout provider */
             vout_display_cfg_t cfg_tmp = *cfg;
-            if (cfg_tmp.display.width < windowMinSize.width)
-                cfg_tmp.display.width = windowMinSize.width;
-            if (cfg_tmp.display.height < 70)
-                cfg_tmp.display.height = 70;
+            NSRect bounds;
+            /* on HiDPI displays, the point bounds don't equal the actual pixel based bounds */
+            if (OSX_LION)
+                bounds = [sys->glView convertRectToBacking:[sys->glView bounds]];
+            else
+                bounds = [sys->glView bounds];
+            cfg_tmp.display.width = bounds.size.width;
+            cfg_tmp.display.height = bounds.size.height;
 
-            if (!config_GetInt(vd, "macosx-video-autoresize"))
-            {
-                NSRect bounds = [sys->glView bounds];
-                cfg_tmp.display.width = bounds.size.width;
-                cfg_tmp.display.height = bounds.size.height;
+            vout_display_place_t place;
+            vout_display_PlacePicture (&place, source, &cfg_tmp, false);
+            @synchronized (sys->glView) {
+                sys->place = place;
             }
-
-            vout_display_PlacePicture (&sys->place, source, &cfg_tmp, false);
 
             /* For resize, we call glViewport in reshape and not here.
                This has the positive side effect that we avoid erratic sizing as we animate every resize. */
             if (query != VOUT_DISPLAY_CHANGE_DISPLAY_SIZE)
-            {
                 // x / y are top left corner, but we need the lower left one
-                glViewport (sys->place.x, cfg_tmp.display.height - (sys->place.y + sys->place.height), sys->place.width, sys->place.height);
-            }
+                glViewport (place.x, cfg_tmp.display.height - (place.y + place.height), place.width, place.height);
+
 
             [o_pool release];
             return VLC_SUCCESS;
@@ -436,10 +423,12 @@ static int Control (vout_display_t *vd, int query, va_list ap)
 static int OpenglLock (vlc_gl_t *gl)
 {
     vout_display_sys_t *sys = (vout_display_sys_t *)gl->sys;
+    if (!sys->glView || ![sys->glView respondsToSelector:@selector(openGLContext)])
+        return 1;
+
     NSOpenGLContext *context = [sys->glView openGLContext];
     CGLError err = CGLLockContext ([context CGLContextObj]);
-    if (kCGLNoError == err)
-    {
+    if (kCGLNoError == err) {
         [context makeCurrentContext];
         return 0;
     }
@@ -504,6 +493,10 @@ static void OpenglSwap (vlc_gl_t *gl)
     if (!self)
         return nil;
 
+    /* enable HiDPI support on OS X 10.7 and later */
+    if (OSX_LION)
+        [self setWantsBestResolutionOpenGLSurface:YES];
+
     /* Swap buffers only during the vertical retrace of the monitor.
      http://developer.apple.com/documentation/GraphicsImaging/
      Conceptual/OpenGL/chap5/chapter_5_section_44.html */
@@ -517,9 +510,10 @@ static void OpenglSwap (vlc_gl_t *gl)
 /**
  * Gets called by the Open() method.
  */
-- (void)setFrameWithValue:(NSValue *)value
+- (void)setFrameToBoundsOfView:(NSValue *)value
 {
-    [self setFrame:[value rectValue]];
+    NSView *parentView = [value pointerValue];
+    [self setFrame:[parentView bounds]];
 }
 
 /**
@@ -531,11 +525,6 @@ static void OpenglSwap (vlc_gl_t *gl)
     @synchronized(self) {
         vd = aVd;
     }
-}
-
-- (vout_display_t *)voutDisplay
-{
-    return vd;
 }
 
 /**
@@ -605,10 +594,9 @@ static void OpenglSwap (vlc_gl_t *gl)
         hasFirstFrame = vd && vd->sys->has_first_frame;
     }
 
-    if (hasFirstFrame) {
+    if (hasFirstFrame)
         // This will lock gl.
         vout_display_opengl_Display (vd->sys->vgl, &vd->source);
-    }
     else
         glClear (GL_COLOR_BUFFER_BIT);
 }
@@ -620,24 +608,29 @@ static void OpenglSwap (vlc_gl_t *gl)
 {
     VLCAssertMainThread();
 
-    NSRect bounds = [self bounds];
-
+    NSRect bounds;
+    /* on HiDPI displays, the point bounds don't equal the actual pixel based bounds */
+    if (OSX_LION)
+        bounds = [self convertRectToBacking:[self bounds]];
+    else
+        bounds = [self bounds];
+    vout_display_place_t place;
+    
     @synchronized(self) {
         if (vd) {
             vout_display_cfg_t cfg_tmp = *(vd->cfg);
             cfg_tmp.display.width  = bounds.size.width;
             cfg_tmp.display.height = bounds.size.height;
 
-            vout_display_PlacePicture (&vd->sys->place, &vd->source, &cfg_tmp, false);
+            vout_display_PlacePicture (&place, &vd->source, &cfg_tmp, false);
+            vd->sys->place = place;
             vout_display_SendEventDisplaySize (vd, bounds.size.width, bounds.size.height, vd->cfg->is_fullscreen);
         }
     }
 
     if ([self lockgl]) {
-        if (vd) { 
-            // x / y are top left corner, but we need the lower left one
-            glViewport (vd->sys->place.x, bounds.size.height - (vd->sys->place.y + vd->sys->place.height), vd->sys->place.width, vd->sys->place.height);
-        }
+        // x / y are top left corner, but we need the lower left one
+        glViewport (place.x, bounds.size.height - (place.y + place.height), place.width, place.height);
 
         @synchronized(self) {
             // This may be cleared before -drawRect is being called,
@@ -704,21 +697,12 @@ static void OpenglSwap (vlc_gl_t *gl)
     return YES;
 }
 
-- (void)setWindowLevel:(NSNumber*)state
-{
-    if ([state unsignedIntValue] & VOUT_WINDOW_STATE_ABOVE)
-        [[self window] setLevel: NSStatusWindowLevel];
-    else
-        [[self window] setLevel: NSNormalWindowLevel];
-}
-
 #pragma mark -
 #pragma mark Mouse handling
 
 - (void)mouseDown:(NSEvent *)o_event
 {
-    if ([o_event type] == NSLeftMouseDown && !([o_event modifierFlags] &  NSControlKeyMask))
-    {
+    if ([o_event type] == NSLeftMouseDown && !([o_event modifierFlags] &  NSControlKeyMask)) {
         if ([o_event clickCount] <= 1)
             vout_display_SendEventMousePressed (vd, MOUSE_BUTTON_LEFT);
     }
@@ -754,20 +738,28 @@ static void OpenglSwap (vlc_gl_t *gl)
     NSRect s_rect;
     BOOL b_inside;
 
-    s_rect = [self bounds];
+    /* on HiDPI displays, the point bounds don't equal the actual pixel based bounds */
+    if (OSX_LION)
+        s_rect = [self convertRectToBacking:[self bounds]];
+    else
+        s_rect = [self bounds];
     ml = [self convertPoint: [o_event locationInWindow] fromView: nil];
     b_inside = [self mouse: ml inRect: s_rect];
+    
+    if (b_inside) {
+        @synchronized (self) {
+            if (vd) {
+                vout_display_place_t place = vd->sys->place;
 
-    if (b_inside)
-    {
-        if (vd && vd->sys->place.width > 0 && vd->sys->place.height > 0)
-        {
-            const int x = vd->source.i_x_offset +
-            (int64_t)(ml.x - vd->sys->place.x) * vd->source.i_visible_width / vd->sys->place.width;
-            const int y = vd->source.i_y_offset +
-            (int64_t)((int)s_rect.size.height - (int)ml.y - vd->sys->place.y) * vd->source.i_visible_height / vd->sys->place.height;
+                if (place.width > 0 && place.height > 0) {
+                    const int x = vd->source.i_x_offset +
+                    (int64_t)(ml.x - place.x) * vd->source.i_visible_width / place.width;
+                    const int y = vd->source.i_y_offset +
+                    (int64_t)((int)s_rect.size.height - (int)ml.y - place.y) * vd->source.i_visible_height / place.height;
 
-            vout_display_SendEventMouseMoved (vd, x, y);
+                    vout_display_SendEventMouseMoved (vd, x, y);
+                }
+            }
         }
     }
 

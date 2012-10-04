@@ -1,7 +1,7 @@
 /*****************************************************************************
  * misc.m: code not specific to vlc
  *****************************************************************************
- * Copyright (C) 2003-2011 VLC authors and VideoLAN
+ * Copyright (C) 2003-2012 VLC authors and VideoLAN
  * $Id$
  *
  * Authors: Jon Lech Johansen <jon-vl@nanocrew.net>
@@ -25,8 +25,102 @@
 #import "misc.h"
 #import "intf.h"                                          /* VLCApplication */
 #import "MainWindow.h"
+#import "ControlsBar.h"
 #import "controls.h"
 #import "CoreInteraction.h"
+#import <CoreAudio/CoreAudio.h>
+#import <vlc_keys.h>
+
+
+/*****************************************************************************
+ * NSSound (VLCAdditions)
+ *
+ * added code to change the system volume, needed for the apple remote code
+ * this is simplified code, which won't let you set the exact volume
+ * (that's what the audio output is for after all), but just the system volume
+ * in steps of 1/16 (matching the default AR or volume key implementation).
+ *****************************************************************************/
+
+@implementation NSSound (VLCAdditions)
+
++ (float)systemVolumeForChannel:(int)channel
+{
+    AudioDeviceID i_device;
+    float f_volume;
+    OSStatus err;
+    UInt32 i_size;
+
+    i_size = sizeof( i_device );
+    AudioObjectPropertyAddress deviceAddress = { kAudioHardwarePropertyDefaultOutputDevice, kAudioDevicePropertyScopeOutput, kAudioObjectPropertyElementMaster };
+    err = AudioObjectGetPropertyData( kAudioObjectSystemObject, &deviceAddress, 0, NULL, &i_size, &i_device );
+    if (err != noErr) {
+        msg_Warn( VLCIntf, "couldn't get main audio output device" );
+        return .0;
+    }
+
+    AudioObjectPropertyAddress propertyAddress = { kAudioDevicePropertyVolumeScalar, kAudioDevicePropertyScopeOutput, channel };
+    i_size = sizeof( f_volume );
+    err = AudioObjectGetPropertyData(i_device, &propertyAddress, 0, NULL, &i_size, &f_volume);
+    if (err != noErr) {
+        msg_Warn( VLCIntf, "couldn't get volume value" );
+        return .0;
+    }
+
+    return f_volume;
+}
+
++ (bool)setSystemVolume:(float)f_volume forChannel:(int)i_channel
+{
+    /* the following code will fail on S/PDIF devices. there is an easy work-around, but we'd like to match the OS behavior */
+
+    AudioDeviceID i_device;
+    OSStatus err;
+    UInt32 i_size;
+    Boolean b_writeable;
+
+    i_size = sizeof( i_device );
+    AudioObjectPropertyAddress deviceAddress = { kAudioHardwarePropertyDefaultOutputDevice, kAudioDevicePropertyScopeOutput, kAudioObjectPropertyElementMaster };
+    err = AudioObjectGetPropertyData( kAudioObjectSystemObject, &deviceAddress, 0, NULL, &i_size, &i_device );
+    if (err != noErr) {
+        msg_Warn( VLCIntf, "couldn't get main audio output device" );
+        return NO;
+    }
+
+    AudioObjectPropertyAddress propertyAddress = { kAudioDevicePropertyVolumeScalar, kAudioDevicePropertyScopeOutput, i_channel };
+    i_size = sizeof( f_volume );
+    err = AudioObjectIsPropertySettable( i_device, &propertyAddress, &b_writeable );
+    if (err != noErr || !b_writeable ) {
+        msg_Warn( VLCIntf, "we can't set the main audio devices' volume" );
+        return NO;
+    }
+    err = AudioObjectSetPropertyData(i_device, &propertyAddress, 0, NULL, i_size, &f_volume);
+
+    return YES;
+}
+
++ (void)increaseSystemVolume
+{
+    float f_volume = [NSSound systemVolumeForChannel:1]; // we trust that mono is always available and that all channels got the same volume
+    f_volume += .0625; // 1/16 to match the OS
+    bool b_returned = YES;
+
+    /* since core audio doesn't provide a reasonable way to see how many channels we got, let's see how long we can do this */
+    for (NSUInteger x = 1; b_returned ; x++)
+        b_returned = [NSSound setSystemVolume: f_volume forChannel:x];
+}
+
++ (void)decreaseSystemVolume
+{
+    float f_volume = [NSSound systemVolumeForChannel:1]; // we trust that mono is always available and that all channels got the same volume
+    f_volume -= .0625; // 1/16 to match the OS
+    bool b_returned = YES;
+
+    /* since core audio doesn't provide a reasonable way to see how many channels we got, let's see how long we can do this */
+    for (NSUInteger x = 1; b_returned ; x++)
+        b_returned = [NSSound setSystemVolume: f_volume forChannel:x];
+}
+
+@end
 
 /*****************************************************************************
  * NSAnimation (VLCAdditions)
@@ -81,16 +175,15 @@ static NSMutableArray *blackoutWindows = NULL;
 {
     NSUInteger count = [[NSScreen screens] count];
 
-    for( NSUInteger i = 0; i < count; i++ )
-    {
+    for ( NSUInteger i = 0; i < count; i++ ) {
         NSScreen *screen = [[NSScreen screens] objectAtIndex: i];
-        if([screen displayID] == displayID)
+        if ([screen displayID] == displayID)
             return screen;
     }
     return nil;
 }
 
-- (BOOL)isMainScreen
+- (BOOL)mainScreen
 {
     return ([self displayID] == [[[NSScreen screens] objectAtIndex:0] displayID]);
 }
@@ -112,13 +205,12 @@ static NSMutableArray *blackoutWindows = NULL;
     [blackoutWindows removeAllObjects];
 
     NSUInteger screenCount = [[NSScreen screens] count];
-    for(NSUInteger i = 0; i < screenCount; i++)
-    {
+    for (NSUInteger i = 0; i < screenCount; i++) {
         NSScreen *screen = [[NSScreen screens] objectAtIndex: i];
         VLCWindow *blackoutWindow;
         NSRect screen_rect;
 
-        if([self isScreen: screen])
+        if ([self isScreen: screen])
             continue;
 
         screen_rect = [screen frame];
@@ -139,13 +231,8 @@ static NSMutableArray *blackoutWindows = NULL;
         [blackoutWindows addObject: blackoutWindow];
         [blackoutWindow release];
 
-        if( [screen isMainScreen] )
-        {
-            if (OSX_LEOPARD)
-                SetSystemUIMode( kUIModeAllHidden, kUIOptionAutoShowMenuBar);
-            else
-                [NSApp setPresentationOptions:(NSApplicationPresentationAutoHideDock | NSApplicationPresentationAutoHideMenuBar)];
-        }
+        if ( [screen mainScreen] )
+            [NSApp setPresentationOptions:(NSApplicationPresentationAutoHideDock | NSApplicationPresentationAutoHideMenuBar)];
     }
 }
 
@@ -153,220 +240,12 @@ static NSMutableArray *blackoutWindows = NULL;
 {
     NSUInteger blackoutWindowCount = [blackoutWindows count];
 
-    for(NSUInteger i = 0; i < blackoutWindowCount; i++)
-    {
+    for (NSUInteger i = 0; i < blackoutWindowCount; i++) {
         VLCWindow *blackoutWindow = [blackoutWindows objectAtIndex: i];
         [blackoutWindow closeAndAnimate: YES];
     }
 
-    if (OSX_LEOPARD)
-        SetSystemUIMode( kUIModeNormal, kUIOptionAutoShowMenuBar);
-    else
-        [NSApp setPresentationOptions:(NSApplicationPresentationDefault)];
-}
-
-@end
-
-/*****************************************************************************
- * VLCWindow
- *
- *  Missing extension to NSWindow
- *****************************************************************************/
-
-@implementation VLCWindow
-- (id)initWithContentRect:(NSRect)contentRect styleMask:(NSUInteger)styleMask
-    backing:(NSBackingStoreType)backingType defer:(BOOL)flag
-{
-    self = [super initWithContentRect:contentRect styleMask:styleMask backing:backingType defer:flag];
-    if( self )
-    {
-        b_isFullscreen = NO;
-        b_isset_canBecomeKeyWindow = NO;
-        /* we don't want this window to be restored on relaunch */
-        if (OSX_LION)
-            [self setRestorable:NO];
-    }
-    return self;
-}
-- (void)setCanBecomeKeyWindow: (BOOL)canBecomeKey
-{
-    b_isset_canBecomeKeyWindow = YES;
-    b_canBecomeKeyWindow = canBecomeKey;
-}
-
-- (BOOL)canBecomeKeyWindow
-{
-    if(b_isset_canBecomeKeyWindow)
-        return b_canBecomeKeyWindow;
-
-    return [super canBecomeKeyWindow];
-}
-
-- (void)closeAndAnimate: (BOOL)animate
-{
-    NSInvocation *invoc;
-
-    if (!animate)
-    {
-        [super close];
-        return;
-    }
-
-    invoc = [NSInvocation invocationWithMethodSignature:[super methodSignatureForSelector:@selector(close)]];
-    [invoc setTarget: self];
-
-    if (![self isVisible] || [self alphaValue] == 0.0)
-    {
-        [super close];
-        return;
-    }
-
-    [self orderOut: self animate: YES callback: invoc];
-}
-
-- (void)orderOut: (id)sender animate: (BOOL)animate
-{
-    NSInvocation *invoc = [NSInvocation invocationWithMethodSignature:[super methodSignatureForSelector:@selector(orderOut:)]];
-    [invoc setTarget: self];
-    [invoc setArgument: sender atIndex: 0];
-    [self orderOut: sender animate: animate callback: invoc];
-}
-
-- (void)orderOut: (id)sender animate: (BOOL)animate callback:(NSInvocation *)callback
-{
-    NSViewAnimation *anim;
-    NSViewAnimation *current_anim;
-    NSMutableDictionary *dict;
-
-    if (!animate)
-    {
-        [self orderOut: sender];
-        return;
-    }
-
-    dict = [[NSMutableDictionary alloc] initWithCapacity:2];
-
-    [dict setObject:self forKey:NSViewAnimationTargetKey];
-
-    [dict setObject:NSViewAnimationFadeOutEffect forKey:NSViewAnimationEffectKey];
-    anim = [[NSViewAnimation alloc] initWithViewAnimations:[NSArray arrayWithObjects:dict, nil]];
-    [dict release];
-
-    [anim setAnimationBlockingMode:NSAnimationNonblocking];
-    [anim setDuration:0.9];
-    [anim setFrameRate:30];
-    [anim setUserInfo: callback];
-
-    @synchronized(self) {
-        current_anim = self->animation;
-
-        if ([[[current_anim viewAnimations] objectAtIndex:0] objectForKey: NSViewAnimationEffectKey] == NSViewAnimationFadeOutEffect && [current_anim isAnimating])
-        {
-            [anim release];
-        }
-        else
-        {
-            if (current_anim)
-            {
-                [current_anim stopAnimation];
-                [anim setCurrentProgress:1.0-[current_anim currentProgress]];
-                [current_anim release];
-            }
-            else
-                [anim setCurrentProgress:1.0 - [self alphaValue]];
-            self->animation = anim;
-            [self setDelegate: self];
-            [anim startAnimation];
-        }
-    }
-}
-
-- (void)orderFront: (id)sender animate: (BOOL)animate
-{
-    NSViewAnimation *anim;
-    NSViewAnimation *current_anim;
-    NSMutableDictionary *dict;
-
-    if (!animate)
-    {
-        [super orderFront: sender];
-        [self setAlphaValue: 1.0];
-        return;
-    }
-
-    if (![self isVisible])
-    {
-        [self setAlphaValue: 0.0];
-        [super orderFront: sender];
-    }
-    else if ([self alphaValue] == 1.0)
-    {
-        [super orderFront: self];
-        return;
-    }
-
-    dict = [[NSMutableDictionary alloc] initWithCapacity:2];
-
-    [dict setObject:self forKey:NSViewAnimationTargetKey];
-
-    [dict setObject:NSViewAnimationFadeInEffect forKey:NSViewAnimationEffectKey];
-    anim = [[NSViewAnimation alloc] initWithViewAnimations:[NSArray arrayWithObjects:dict, nil]];
-    [dict release];
-
-    [anim setAnimationBlockingMode:NSAnimationNonblocking];
-    [anim setDuration:0.5];
-    [anim setFrameRate:30];
-
-    @synchronized(self) {
-        current_anim = self->animation;
-
-        if ([[[current_anim viewAnimations] objectAtIndex:0] objectForKey: NSViewAnimationEffectKey] == NSViewAnimationFadeInEffect && [current_anim isAnimating])
-        {
-            [anim release];
-        }
-        else
-        {
-            if (current_anim)
-            {
-                [current_anim stopAnimation];
-                [anim setCurrentProgress:1.0 - [current_anim currentProgress]];
-                [current_anim release];
-            }
-            else
-                [anim setCurrentProgress:[self alphaValue]];
-            self->animation = anim;
-            [self setDelegate: self];
-            [self orderFront: sender];
-            [anim startAnimation];
-        }
-    }
-}
-
-- (void)animationDidEnd:(NSAnimation*)anim
-{
-    if ([self alphaValue] <= 0.0)
-    {
-        NSInvocation * invoc;
-        [super orderOut: nil];
-        [self setAlphaValue: 1.0];
-        if ((invoc = [anim userInfo]))
-            [invoc invoke];
-    }
-}
-
-- (void)setFullscreen:(BOOL)b_var
-{
-    b_isFullscreen = b_var;
-}
-
-- (BOOL)isFullscreen
-{
-    return b_isFullscreen;
-}
-
-- (IBAction)fullscreen:(id)sender
-{
-    [[VLCCoreInteraction sharedInstance] toggleFullscreen];
+    [NSApp setPresentationOptions:(NSApplicationPresentationDefault)];
 }
 
 @end
@@ -491,6 +370,48 @@ void _drawFrameInRect(NSRect frameRect)
 @end
 
 /*****************************************************************************
+ * ProgressView
+ *****************************************************************************/
+
+@implementation VLCProgressView : NSView
+
+- (void)scrollWheel:(NSEvent *)o_event
+{
+    intf_thread_t * p_intf = VLCIntf;
+    CGFloat f_deltaY = [o_event deltaY];
+    CGFloat f_deltaX = [o_event deltaX];
+
+    if (!OSX_SNOW_LEOPARD && [o_event isDirectionInvertedFromDevice])
+        f_deltaX = -f_deltaX; // optimisation, actually double invertion of f_deltaY here
+    else
+        f_deltaY = -f_deltaY;
+
+    // positive for left / down, negative otherwise
+    CGFloat f_delta = f_deltaX + f_deltaY;
+    CGFloat f_abs;
+    int i_vlckey;
+
+    if (f_delta > 0.0f) {
+        i_vlckey = ACTIONID_JUMP_BACKWARD_EXTRASHORT;
+        f_abs = f_delta;
+    }
+    else {
+        i_vlckey = ACTIONID_JUMP_FORWARD_EXTRASHORT;
+        f_abs = -f_delta;
+    }
+
+    for (NSUInteger i = 0; i < (int)(f_abs/4.+1.) && f_abs > 0.05 ; i++)
+        var_SetInteger( p_intf->p_libvlc, "key-action", i_vlckey );
+}
+
+- (BOOL)acceptsFirstResponder
+{
+    return YES;
+}
+
+@end
+
+/*****************************************************************************
  * TimeLineSlider
  *****************************************************************************/
 
@@ -498,10 +419,13 @@ void _drawFrameInRect(NSRect frameRect)
 
 - (void)awakeFromNib
 {
-    if (config_GetInt( VLCIntf, "macosx-interfacestyle" ))
+    if (config_GetInt( VLCIntf, "macosx-interfacestyle" )) {
         o_knob_img = [NSImage imageNamed:@"progression-knob_dark"];
-    else
+        b_dark = YES;
+    } else {
         o_knob_img = [NSImage imageNamed:@"progression-knob"];
+        b_dark = NO;
+    }
     img_rect.size = [o_knob_img size];
     img_rect.origin.x = img_rect.origin.y = 0;
 }
@@ -529,7 +453,7 @@ void _drawFrameInRect(NSRect frameRect)
 
 - (void)drawRect:(NSRect)rect
 {
-    [[[VLCMain sharedInstance] mainWindow] drawFancyGradientEffectForTimeSlider];
+    [[[[VLCMain sharedInstance] mainWindow] controlsBar] drawFancyGradientEffectForTimeSlider];
     msleep( 10000 ); //wait for the gradient to draw completely
 
     /* Draw default to make sure the slider behaves correctly */
@@ -539,8 +463,48 @@ void _drawFrameInRect(NSRect frameRect)
     [[NSGraphicsContext currentContext] restoreGraphicsState];
 
     NSRect knobRect = [[self cell] knobRectFlipped:NO];
-    knobRect.origin.y+=1;
+    if (b_dark)
+        knobRect.origin.y+=2;
+    else
+        knobRect.origin.y+=1;
     [self drawKnobInRect: knobRect];
+}
+
+@end
+
+/*****************************************************************************
+ * VLCVolumeSliderCommon
+ *****************************************************************************/
+
+@implementation VLCVolumeSliderCommon : NSSlider
+
+- (void)scrollWheel:(NSEvent *)o_event
+{
+    intf_thread_t * p_intf = VLCIntf;
+    CGFloat f_deltaY = [o_event deltaY];
+    CGFloat f_deltaX = [o_event deltaX];
+
+    if (!OSX_SNOW_LEOPARD && [o_event isDirectionInvertedFromDevice])
+        f_deltaX = -f_deltaX; // optimisation, actually double invertion of f_deltaY here
+    else
+        f_deltaY = -f_deltaY;
+
+    // positive for left / down, negative otherwise
+    CGFloat f_delta = f_deltaX + f_deltaY;
+    CGFloat f_abs;
+    int i_vlckey;
+
+    if (f_delta > 0.0f) {
+        i_vlckey = ACTIONID_VOL_DOWN;
+        f_abs = f_delta;
+    }
+    else {
+        i_vlckey = ACTIONID_VOL_UP;
+        f_abs = -f_delta;
+    }
+
+    for (NSUInteger i = 0; i < (int)(f_abs/4.+1.) && f_abs > 0.05 ; i++)
+        var_SetInteger(p_intf->p_libvlc, "key-action", i_vlckey);
 }
 
 @end
@@ -632,8 +596,7 @@ void _drawFrameInRect(NSRect frameRect)
 
 - (void)setStringValue:(NSString *)string
 {
-    if (!o_string_shadow)
-    {
+    if (!o_string_shadow) {
         o_string_shadow = [[NSShadow alloc] init];
         [o_string_shadow setShadowColor: [NSColor colorWithCalibratedWhite:1.0 alpha:0.5]];
         [o_string_shadow setShadowOffset:NSMakeSize(0.0, -1.5)];
@@ -651,7 +614,7 @@ void _drawFrameInRect(NSRect frameRect)
 
 - (void)mouseDown: (NSEvent *)ourEvent
 {
-    if( [ourEvent clickCount] > 1 )
+    if ( [ourEvent clickCount] > 1 )
         [[[VLCMain sharedInstance] controls] goToSpecificTime: nil];
     else
     {
@@ -692,6 +655,7 @@ void _drawFrameInRect(NSRect frameRect)
  * VLCThreePartImageView interface
  *****************************************************************************/
 @implementation VLCThreePartImageView
+
 - (void)dealloc
 {
     [o_left_img release];

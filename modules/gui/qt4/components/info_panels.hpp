@@ -104,9 +104,8 @@ class ExtraMetaPanel: public QWidget
 {
     Q_OBJECT
 public:
-    ExtraMetaPanel( QWidget *, struct intf_thread_t * );
+    ExtraMetaPanel( QWidget * );
 private:
-    struct intf_thread_t *p_intf;
     QTreeWidget *extraMetaTree;
 public slots:
     void update( input_item_t * );
@@ -117,10 +116,8 @@ class InputStatsPanel: public QWidget
 {
     Q_OBJECT
 public:
-    InputStatsPanel( QWidget *, struct intf_thread_t * );
+    InputStatsPanel( QWidget * );
 private:
-    struct intf_thread_t *p_intf;
-
     QTreeWidget *StatsTree;
     QTreeWidgetItem *input;
     QTreeWidgetItem *read_media_stat;
@@ -155,9 +152,8 @@ class InfoPanel: public QWidget
 {
     Q_OBJECT
 public:
-    InfoPanel( QWidget *, struct intf_thread_t * );
+    InfoPanel( QWidget * );
 private:
-    struct intf_thread_t *p_intf;
     QTreeWidget *InfoTree;
 public slots:
     void update( input_item_t * );

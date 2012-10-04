@@ -2735,7 +2735,7 @@ msgstr "Listă de decodoare preferate"
 msgid ""
 "When several video formats are available, select one whose resolution is "
 "closest to (but not higher than) this setting, in number of lines. Use this "
-"option if you don't have enough CPU power or network bandwith to play higher "
+"option if you don't have enough CPU power or network bandwidth to play higher "
 "resolutions."
 msgstr ""
 
@@ -30007,14 +30007,6 @@ msgstr "&Adaugă la coadă"
 #, fuzzy
 #~ msgid "Automate picture coding mode"
 #~ msgstr "Mod de codare imagine"
-
-#~ msgid ""
-#~ "This is the relative default size of the fonts that will be rendered on "
-#~ "the video. If absolute font size is set, relative size will be overriden."
-#~ msgstr ""
-#~ "Dimensiunea relativă implicită a fonturilor care vor fi randate pe video. "
-#~ "Dacă valoarea absolută a fontului este stabilită, dimensiunea relativă va "
-#~ "fi suprascrsă."
 
 #~ msgid ""
 #~ "Containers (*.ps *.ts *.mpg *.ogg *.asf *.mp4 *.mov *.wav *.raw *.flv)"

@@ -244,8 +244,13 @@ ATTR_PACKED
 #define WAVE_FORMAT_WMAP                0x0162 /* WMA 9 Professional */
 #define WAVE_FORMAT_WMAL                0x0163 /* WMA 9 Lossless */
 
+#define WAVE_FORMAT_ULEAD_DV_AUDIO_NTSC 0x0215 /* Ulead */
+#define WAVE_FORMAT_ULEAD_DV_AUDIO_PAL  0x0216 /* Ulead */
+
 #define WAVE_FORMAT_ATRAC3              0x0270 /* Atrac3, != from MSDN doc */
 #define WAVE_FORMAT_SONY_ATRAC3         0x0272 /* Atrac3, != from MSDN doc */
+
+#define WAVE_FORMAT_INDEO_AUDIO         0x0402 /* Indeo Audio Coder */
 
 #define WAVE_FORMAT_AAC_2               0x1601 /* Other AAC */
 #define WAVE_FORMAT_AAC_LATM            0x1602 /* AAC/LATM */
@@ -345,7 +350,7 @@ wave_format_tag_to_fourcc[] =
     { WAVE_FORMAT_MULAW,      VLC_CODEC_MULAW,                  "Mu-Law" },
     { WAVE_FORMAT_IMA_ADPCM,  VLC_CODEC_ADPCM_IMA_WAV,          "Ima-ADPCM" },
     { WAVE_FORMAT_YAMAHA_ADPCM, VLC_CODEC_ADPCM_YAMAHA,         "Yamaha ADPCM" },
-    { WAVE_FORMAT_TRUESPEECH, VLC_FOURCC(0x22, 0x0, 0x0, 0x0 ), "Truespeech" },
+    { WAVE_FORMAT_TRUESPEECH, VLC_CODEC_TRUESPEECH,             "Truespeech" },
     { WAVE_FORMAT_GSM610,     VLC_CODEC_GSM_MS,                 "Microsoft WAV GSM" },
     { WAVE_FORMAT_G726,       VLC_CODEC_ADPCM_G726,             "G.726 ADPCM" },
     { WAVE_FORMAT_MPEGLAYER3, VLC_CODEC_MPGA,                   "Mpeg Audio" },
@@ -381,6 +386,9 @@ wave_format_tag_to_fourcc[] =
     { WAVE_FORMAT_FLAC,       VLC_CODEC_FLAC,                   "FLAC Audio" },
     { WAVE_FORMAT_GSM_AMR_FIXED, VLC_CODEC_AMR_NB,              "GSM-AMR Audio CBR, no SID" },
     { WAVE_FORMAT_GSM_AMR,    VLC_CODEC_AMR_NB,                 "GSM-AMR Audio VBR, SID" },
+    { WAVE_FORMAT_ULEAD_DV_AUDIO_NTSC, VLC_CODEC_ULEAD_DV_AUDIO_NTSC, "Ulead DV audio NTSC" },
+    { WAVE_FORMAT_ULEAD_DV_AUDIO_PAL, VLC_CODEC_ULEAD_DV_AUDIO_PAL, "Ulead DV audio PAL" },
+    { WAVE_FORMAT_INDEO_AUDIO, VLC_CODEC_INDEO_AUDIO, "Indeo Audio Coder" },
     { WAVE_FORMAT_UNKNOWN,    VLC_FOURCC( 'u', 'n', 'd', 'f' ), "Unknown" }
 };
 

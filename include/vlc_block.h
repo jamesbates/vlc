@@ -35,7 +35,6 @@
 /****************************************************************************
  * block:
  ****************************************************************************
- * - block_sys_t is opaque and thus block_t->p_sys is PRIVATE
  * - i_flags may not always be set (ie could be 0, even for a key frame
  *      it depends where you receive the buffer (before/after a packetizer
  *      and the demux/packetizer implementations.
@@ -51,7 +50,6 @@
  *   (don't duplicate yourself in a bigger buffer, block_Realloc is
  *   optimised for preheader/postdatas increase)
  ****************************************************************************/
-typedef struct block_sys_t block_sys_t;
 
 /** The content doesn't follow the last block, or is probably broken */
 #define BLOCK_FLAG_DISCONTINUITY 0x0001
@@ -138,8 +136,8 @@ struct block_t
  * - block_Duplicate : create a copy of a block.
  ****************************************************************************/
 VLC_API void block_Init( block_t *, void *, size_t );
-VLC_API block_t * block_Alloc( size_t ) VLC_USED;
-VLC_API block_t * block_Realloc( block_t *, ssize_t i_pre, size_t i_body ) VLC_USED;
+VLC_API block_t *block_Alloc( size_t ) VLC_USED VLC_MALLOC;
+VLC_API block_t *block_Realloc( block_t *, ssize_t i_pre, size_t i_body ) VLC_USED;
 
 #define block_New( dummy, size ) block_Alloc(size)
 
@@ -165,9 +163,10 @@ static inline void block_Release( block_t *p_block )
     p_block->pf_release( p_block );
 }
 
-VLC_API block_t * block_heap_Alloc(void *, size_t) VLC_USED;
-VLC_API block_t * block_mmap_Alloc(void *addr, size_t length) VLC_USED;
-VLC_API block_t * block_File(int fd) VLC_USED;
+VLC_API block_t *block_heap_Alloc(void *, size_t) VLC_USED VLC_MALLOC;
+VLC_API block_t *block_mmap_Alloc(void *addr, size_t length) VLC_USED VLC_MALLOC;
+VLC_API block_t *block_File(int fd) VLC_USED VLC_MALLOC;
+VLC_API block_t *block_FilePath(const char *) VLC_USED VLC_MALLOC;
 
 static inline void block_Cleanup (void *block)
 {
@@ -300,18 +299,16 @@ static inline block_t *block_ChainGather( block_t *p_list )
  *      needed), be carefull, you can use it ONLY if you are sure to be the
  *      only one getting data from the fifo.
  * - block_FifoCount : how many packets are waiting in the fifo
- * - block_FifoWake : wake ups a thread with block_FifoGet() = NULL
- *   (this is used to wakeup a thread when there is no data to queue)
  *
  * block_FifoGet and block_FifoShow are cancellation points.
  ****************************************************************************/
 
-VLC_API block_fifo_t * block_FifoNew( void ) VLC_USED;
+VLC_API block_fifo_t *block_FifoNew( void ) VLC_USED VLC_MALLOC;
 VLC_API void block_FifoRelease( block_fifo_t * );
 VLC_API void block_FifoPace( block_fifo_t *fifo, size_t max_depth, size_t max_size );
 VLC_API void block_FifoEmpty( block_fifo_t * );
 VLC_API size_t block_FifoPut( block_fifo_t *, block_t * );
-VLC_API void block_FifoWake( block_fifo_t * );
+void block_FifoWake( block_fifo_t * );
 VLC_API block_t * block_FifoGet( block_fifo_t * ) VLC_USED;
 VLC_API block_t * block_FifoShow( block_fifo_t * );
 size_t block_FifoSize( const block_fifo_t *p_fifo ) VLC_USED;

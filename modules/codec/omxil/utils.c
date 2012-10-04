@@ -35,6 +35,7 @@
 #include <vlc_cpu.h>
 
 #include "omxil.h"
+#include "qcom.h"
 
 /*****************************************************************************
  * Events utility functions
@@ -118,27 +119,29 @@ OMX_ERRORTYPE WaitForSpecificOmxEvent(decoder_t *p_dec,
 /*****************************************************************************
  * Picture utility functions
  *****************************************************************************/
-void CopyOmxPicture( decoder_t *p_dec, picture_t *p_pic,
-                     OMX_BUFFERHEADERTYPE *p_header, int i_slice_height )
+void CopyOmxPicture( int i_color_format, picture_t *p_pic,
+                     int i_slice_height,
+                     int i_src_stride, uint8_t *p_src, int i_chroma_div )
 {
-    decoder_sys_t *p_sys = p_dec->p_sys;
-    int i_src_stride, i_dst_stride;
+    uint8_t *p_dst;
+    int i_dst_stride;
     int i_plane, i_width, i_line;
-    uint8_t *p_dst, *p_src;
-
-    i_src_stride  = p_sys->out.i_frame_stride;
-    p_src = p_header->pBuffer + p_header->nOffset;
+    if( i_color_format == QOMX_COLOR_FormatYUV420PackedSemiPlanar64x32Tile2m8ka )
+    {
+        qcom_convert(p_src, p_pic);
+        return;
+    }
 
     for( i_plane = 0; i_plane < p_pic->i_planes; i_plane++ )
     {
-        if(i_plane == 1) i_src_stride /= p_sys->out.i_frame_stride_chroma_div;
+        if(i_plane == 1) i_src_stride /= i_chroma_div;
         p_dst = p_pic->p[i_plane].p_pixels;
         i_dst_stride = p_pic->p[i_plane].i_pitch;
         i_width = p_pic->p[i_plane].i_visible_pitch;
 
         for( i_line = 0; i_line < p_pic->p[i_plane].i_visible_lines; i_line++ )
         {
-            vlc_memcpy( p_dst, p_src, i_width );
+            memcpy( p_dst, p_src, i_width );
             p_src += i_src_stride;
             p_dst += i_dst_stride;
         }
@@ -172,7 +175,7 @@ void CopyVlcPicture( decoder_t *p_dec, OMX_BUFFERHEADERTYPE *p_header,
 
         for( i_line = 0; i_line < p_pic->p[i_plane].i_visible_lines; i_line++ )
         {
-            vlc_memcpy( p_dst, p_src, i_width );
+            memcpy( p_dst, p_src, i_width );
             p_src += i_src_stride;
             p_dst += i_dst_stride;
         }
@@ -244,7 +247,7 @@ const char *ErrorToString(OMX_ERRORTYPE error)
         "OMX_ErrorFormatNotDetected", "OMX_ErrorContentPipeOpenFailed",
         "OMX_ErrorContentPipeCreationFailed", "OMX_ErrorSeperateTablesUsed",
         "OMX_ErrorTunnelingUnsupported",
-        "OMX_Error unkown"
+        "OMX_Error unknown"
     };
 
     if(error == OMX_ErrorNone) return "OMX_ErrorNone";
@@ -274,7 +277,9 @@ static const struct
     { VLC_CODEC_WMV1, OMX_VIDEO_CodingWMV,   "video_decoder.wmv"   },
     { VLC_CODEC_WMV2, OMX_VIDEO_CodingWMV,   "video_decoder.wmv"   },
     { VLC_CODEC_WMV3, OMX_VIDEO_CodingWMV,   "video_decoder.wmv"   },
+    { VLC_CODEC_VC1,  OMX_VIDEO_CodingWMV,   "video_decoder.wmv"   },
     { VLC_CODEC_MJPG, OMX_VIDEO_CodingMJPEG, "video_decoder.jpeg"  },
+    { VLC_CODEC_MJPG, OMX_VIDEO_CodingMJPEG, "video_decoder.mjpeg" },
     { VLC_CODEC_RV10, OMX_VIDEO_CodingRV,    "video_decoder.rv"    },
     { VLC_CODEC_RV20, OMX_VIDEO_CodingRV,    "video_decoder.rv"    },
     { VLC_CODEC_RV30, OMX_VIDEO_CodingRV,    "video_decoder.rv"    },
@@ -350,6 +355,7 @@ static const struct
     { VLC_CODEC_NV12, OMX_COLOR_FormatYUV420SemiPlanar, 3, 1, 1 },
     { VLC_CODEC_NV21, OMX_QCOM_COLOR_FormatYVU420SemiPlanar, 3, 1, 1 },
     { VLC_CODEC_NV12, OMX_TI_COLOR_FormatYUV420PackedSemiPlanar, 3, 1, 2 },
+    { VLC_CODEC_NV12, QOMX_COLOR_FormatYUV420PackedSemiPlanar64x32Tile2m8ka, 3, 1, 1 },
     { VLC_CODEC_YUYV, OMX_COLOR_FormatYCbYCr, 4, 2, 0 },
     { VLC_CODEC_YVYU, OMX_COLOR_FormatYCrYCb, 4, 2, 0 },
     { VLC_CODEC_UYVY, OMX_COLOR_FormatCbYCrY, 4, 2, 0 },

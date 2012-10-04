@@ -39,17 +39,17 @@
 #include "input_manager.hpp"
 #include <vlc_vout.h>                       /* vout_thread_t for aspect ratio combobox */
 
-#include <QScrollArea>
 #include <QGroupBox>
 #include <QLabel>
 #include <QComboBox>
 #include <QListWidget>
 #include <QSpinBox>
 #include <QRubberBand>
-
+#include <QDrag>
 #include <QDragEnterEvent>
 #include <QDialogButtonBox>
 #include <QInputDialog>
+#include <QMimeData>
 
 #include <assert.h>
 
@@ -184,6 +184,7 @@ ToolbarEditDialog::ToolbarEditDialog( QWidget *_w, intf_thread_t *_p_intf)
        user might hit on delete a bit too much, but discussion is opened. -- jb */
     if( i_size == 0 )
     {
+        profileCombo->addItem( PROFILE_NAME_6, QString( VALUE_6 ) );
         profileCombo->addItem( PROFILE_NAME_1, QString( VALUE_1 ) );
         profileCombo->addItem( PROFILE_NAME_2, QString( VALUE_2 ) );
         profileCombo->addItem( PROFILE_NAME_3, QString( VALUE_3 ) );
@@ -524,6 +525,7 @@ DroppingController::DroppingController( intf_thread_t *_p_intf,
     controlLayout->setMargin( 0 );
     setFrameShape( QFrame::StyledPanel );
     setFrameShadow( QFrame::Raised );
+    setMinimumHeight( 20 );
 
     parseAndCreate( line, controlLayout );
 }

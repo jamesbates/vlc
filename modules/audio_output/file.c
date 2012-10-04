@@ -72,7 +72,7 @@ static const int pi_channels_maps[CHANNELS_MAX+1] =
  *****************************************************************************/
 static int     Open        ( vlc_object_t * );
 static void    Close       ( vlc_object_t * );
-static void    Play        ( audio_output_t *, block_t * );
+static void    Play        ( audio_output_t *, block_t *, mtime_t * );
 
 /*****************************************************************************
  * Module descriptor
@@ -88,7 +88,7 @@ static void    Play        ( audio_output_t *, block_t * );
                         "header to the file.")
 
 static const char *const format_list[] = { "u8", "s8", "u16", "s16", "u16_le",
-                                     "s16_le", "u16_be", "s16_be", "fixed32",
+                                     "s16_le", "u16_be", "s16_be",
                                      "float32", "spdif" };
 static const int format_int[] = { VLC_CODEC_U8,
                                   VLC_CODEC_S8,
@@ -97,7 +97,6 @@ static const int format_int[] = { VLC_CODEC_U8,
                                   VLC_CODEC_S16L,
                                   VLC_CODEC_U16B,
                                   VLC_CODEC_S16B,
-                                  VLC_CODEC_FI32,
                                   VLC_CODEC_FL32,
                                   VLC_CODEC_SPDIFL };
 
@@ -114,7 +113,7 @@ vlc_module_begin ()
                   FILE_LONGTEXT, false )
     add_string( "audiofile-format", "s16",
                 FORMAT_TEXT, FORMAT_TEXT, true )
-        change_string_list( format_list, 0, 0 )
+        change_string_list( format_list, format_list )
     add_integer( "audiofile-channels", 0,
                  CHANNELS_TEXT, CHANNELS_LONGTEXT, true )
         change_integer_range( 0, 6 )
@@ -193,10 +192,9 @@ static int Open( vlc_object_t * p_this )
     {
         p_aout->format.i_bytes_per_frame = AOUT_SPDIF_SIZE;
         p_aout->format.i_frame_length = A52_FRAME_NB;
-        aout_VolumeNoneInit( p_aout );
     }
-    else
-        aout_VolumeSoftInit( p_aout );
+    p_aout->volume_set = NULL;
+    p_aout->mute_set = NULL;
 
     /* Channels number */
     i_channels = var_CreateGetInteger( p_this, "audiofile-channels" );
@@ -310,7 +308,8 @@ static void Close( vlc_object_t * p_this )
 /*****************************************************************************
  * Play: pretend to play a sound
  *****************************************************************************/
-static void Play( audio_output_t * p_aout, block_t *p_buffer )
+static void Play( audio_output_t * p_aout, block_t *p_buffer,
+                  mtime_t *restrict drift )
 {
     if( fwrite( p_buffer->p_buffer, p_buffer->i_buffer, 1,
                 p_aout->sys->p_file ) != 1 )
@@ -324,5 +323,6 @@ static void Play( audio_output_t * p_aout, block_t *p_buffer )
         p_aout->sys->waveh.DataLength += p_buffer->i_buffer;
     }
 
-    aout_BufferFree( p_buffer );
+    block_Release( p_buffer );
+    (void) drift;
 }

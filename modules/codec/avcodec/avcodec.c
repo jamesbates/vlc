@@ -35,13 +35,8 @@
 #include <vlc_avcodec.h>
 #include <vlc_cpu.h>
 
-/* ffmpeg header */
 #define HAVE_MMX 1
-#ifdef HAVE_LIBAVCODEC_AVCODEC_H
-#   include <libavcodec/avcodec.h>
-#else
-#   include <avcodec.h>
-#endif
+#include <libavcodec/avcodec.h>
 
 #include "avcodec.h"
 #include "chroma.h"
@@ -69,6 +64,12 @@ static void CloseDecoder( vlc_object_t * );
 static const int  nloopf_list[] = { 0, 1, 2, 3, 4 };
 static const char *const nloopf_list_text[] =
   { N_("None"), N_("Non-ref"), N_("Bidir"), N_("Non-key"), N_("All") };
+
+#if defined(HAVE_AVCODEC_VDA)
+static const int  nvda_pix_fmt_list[] = { 0, 1 };
+static const char *const nvda_pix_fmt_list_text[] =
+  { N_("420YpCbCr8Planar"), N_("422YpCbCr8") };
+#endif
 
 #ifdef ENABLE_SOUT
 static const char *const enc_hq_list[] = { "rd", "bits", "simple" };
@@ -140,13 +141,25 @@ vlc_module_begin ()
                  true )
     add_obsolete_string( "ffmpeg-codec" ) /* removed since 2.1.0 */
     add_string( "avcodec-codec", NULL, CODEC_TEXT, CODEC_LONGTEXT, true )
-#if defined(HAVE_AVCODEC_VAAPI) || defined(HAVE_AVCODEC_DXVA2)
+#if defined(HAVE_AVCODEC_VAAPI) || defined(HAVE_AVCODEC_DXVA2) || defined(HAVE_AVCODEC_VDA)
     add_obsolete_bool( "ffmpeg-hw" ) /* removed since 2.1.0 */
-    add_bool( "avcodec-hw", false, HW_TEXT, HW_LONGTEXT, false )
+    add_bool( "avcodec-hw",
+#if !defined(HAVE_AVCODEC_VDA)
+    false
+#else
+    true
+#endif
+    , HW_TEXT, HW_LONGTEXT, false )
+#if defined(HAVE_AVCODEC_VDA)
+    add_integer ( "avcodec-vda-pix-fmt", 0, VDA_PIX_FMT_TEXT,
+                  VDA_PIX_FMT_LONGTEXT, false)
+        change_safe ()
+        change_integer_list( nvda_pix_fmt_list, nvda_pix_fmt_list_text )
+#endif
 #endif
 #if defined(FF_THREAD_FRAME)
     add_obsolete_integer( "ffmpeg-threads" ) /* removed since 2.1.0 */
-    add_integer( "avcodec-threads", 0, THREADS_TEXT, THREADS_LONGTEXT, true );
+    add_integer( "avcodec-threads", 1, THREADS_TEXT, THREADS_LONGTEXT, true );
 #endif
 
 
@@ -191,7 +204,7 @@ vlc_module_begin ()
     add_string( ENC_CFG_PREFIX "codec", NULL, CODEC_TEXT, CODEC_LONGTEXT, true )
     add_string( ENC_CFG_PREFIX "hq", "simple", ENC_HQ_TEXT,
                 ENC_HQ_LONGTEXT, false )
-        change_string_list( enc_hq_list, enc_hq_list_text, 0 )
+        change_string_list( enc_hq_list, enc_hq_list_text )
     add_integer( ENC_CFG_PREFIX "keyint", 0, ENC_KEYINT_TEXT,
                  ENC_KEYINT_LONGTEXT, false )
     add_integer( ENC_CFG_PREFIX "bframes", 0, ENC_BFRAMES_TEXT,
@@ -206,7 +219,7 @@ vlc_module_begin ()
                  ENC_VT_LONGTEXT, true )
     add_bool( ENC_CFG_PREFIX "pre-me", false, ENC_PRE_ME_TEXT,
               ENC_PRE_ME_LONGTEXT, true )
-    add_integer( ENC_CFG_PREFIX "rc-buffer-size", 224*1024*8,
+    add_integer( ENC_CFG_PREFIX "rc-buffer-size", 0,
                  ENC_RC_BUF_TEXT, ENC_RC_BUF_LONGTEXT, true )
     add_float( ENC_CFG_PREFIX "rc-buffer-aggressivity", 1.0,
                ENC_RC_BUF_AGGR_TEXT, ENC_RC_BUF_AGGR_LONGTEXT, true )
@@ -315,46 +328,7 @@ static int OpenDecoder( vlc_object_t *p_this )
         return VLC_ENOMEM;
     p_context->debug = var_InheritInteger( p_dec, "avcodec-debug" );
     p_context->opaque = (void *)p_this;
-
-    /* Set CPU capabilities */
-    unsigned i_cpu = vlc_CPU();
-    p_context->dsp_mask = 0;
-    if( !(i_cpu & CPU_CAPABILITY_MMX) )
-    {
-        p_context->dsp_mask |= AV_CPU_FLAG_MMX;
-    }
-    if( !(i_cpu & CPU_CAPABILITY_MMXEXT) )
-    {
-        p_context->dsp_mask |= AV_CPU_FLAG_MMX2;
-    }
-    if( !(i_cpu & CPU_CAPABILITY_3DNOW) )
-    {
-        p_context->dsp_mask |= AV_CPU_FLAG_3DNOW;
-    }
-    if( !(i_cpu & CPU_CAPABILITY_SSE) )
-    {
-        p_context->dsp_mask |= AV_CPU_FLAG_SSE;
-    }
-    if( !(i_cpu & CPU_CAPABILITY_SSE2) )
-    {
-        p_context->dsp_mask |= AV_CPU_FLAG_SSE2;
-    }
-#ifdef AV_CPU_FLAG_SSE3
-    if( !(i_cpu & CPU_CAPABILITY_SSE3) )
-        p_context->dsp_mask |= AV_CPU_FLAG_SSE3;
-#endif
-#ifdef AV_CPU_FLAG_SSSE3
-    if( !(i_cpu & CPU_CAPABILITY_SSSE3) )
-        p_context->dsp_mask |= AV_CPU_FLAG_SSSE3;
-#endif
-#ifdef AV_CPU_FLAG_SSE4
-    if( !(i_cpu & CPU_CAPABILITY_SSE4_1) )
-        p_context->dsp_mask |= AV_CPU_FLAG_SSE4;
-#endif
-#ifdef AV_CPU_FLAG_SSE42
-    if( !(i_cpu & CPU_CAPABILITY_SSE4_2) )
-        p_context->dsp_mask |= AV_CPU_FLAG_SSE42;
-#endif
+    p_context->dsp_mask = GetVlcDspMask(); /* set CPU capabilities */
 
     p_dec->b_need_packetized = true;
     switch( i_cat )
@@ -441,7 +415,8 @@ int ffmpeg_OpenCodec( decoder_t *p_dec )
         if( p_sys->i_codec_id == CODEC_ID_VC1 ||
             p_sys->i_codec_id == CODEC_ID_VORBIS ||
             p_sys->i_codec_id == CODEC_ID_THEORA ||
-            p_sys->i_codec_id == CODEC_ID_AAC )
+            ( p_sys->i_codec_id == CODEC_ID_AAC &&
+              !p_dec->fmt_in.b_packetized ) )
         {
             msg_Warn( p_dec, "waiting for extra data for codec %s",
                       p_sys->psz_namecodec );
@@ -462,6 +437,11 @@ int ffmpeg_OpenCodec( decoder_t *p_dec )
         p_sys->p_context->block_align = p_dec->fmt_in.audio.i_blockalign;
         p_sys->p_context->bit_rate = p_dec->fmt_in.i_bitrate;
         p_sys->p_context->bits_per_coded_sample = p_dec->fmt_in.audio.i_bitspersample;
+        if( p_sys->i_codec_id == CODEC_ID_ADPCM_G726 &&
+            p_sys->p_context->bit_rate > 0 &&
+            p_sys->p_context->sample_rate >  0)
+            p_sys->p_context->bits_per_coded_sample = p_sys->p_context->bit_rate /
+                                                      p_sys->p_context->sample_rate;
     }
     int ret;
     vlc_avcodec_lock();
@@ -473,7 +453,7 @@ int ffmpeg_OpenCodec( decoder_t *p_dec )
     vlc_avcodec_unlock();
     if( ret < 0 )
         return VLC_EGENERIC;
-    msg_Dbg( p_dec, "ffmpeg codec (%s) started", p_sys->psz_namecodec );
+    msg_Dbg( p_dec, "avcodec codec (%s) started", p_sys->psz_namecodec );
 
 #ifdef HAVE_AVCODEC_MT
     if( p_dec->fmt_in.i_cat == VIDEO_ES )

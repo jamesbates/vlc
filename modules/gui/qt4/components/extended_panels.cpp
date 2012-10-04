@@ -247,6 +247,8 @@ ExtVideo::ExtVideo( intf_thread_t *_p_intf, QTabWidget *_parent ) :
         _parent->removeTab( _parent->indexOf( ui.tab_atmo ) );
     }
 
+    SETUP_VFILTER( anaglyph )
+
 #undef SETUP_VFILTER
 #undef SETUP_VFILTER_OPTION
 
@@ -362,10 +364,10 @@ static void ChangeVFiltersString( struct intf_thread_t *p_intf, const char *psz_
             }
 
             /* Remove trailing : : */
-            if( strlen( psz_string ) > 0 &&
-                *( psz_string + strlen( psz_string ) -1 ) == ':' )
+            size_t i_len = strlen( psz_string );
+            if( i_len > 0 && *( psz_string + i_len - 1 ) == ':' )
             {
-                *( psz_string + strlen( psz_string ) -1 ) = '\0';
+                *( psz_string + i_len - 1 ) = '\0';
             }
         }
         else
@@ -440,23 +442,41 @@ void ExtVideo::initComboBoxItems( QObject *widget )
     QString option = OptionFromWidgetName( widget );
     module_config_t *p_item = config_FindConfig( VLC_OBJECT( p_intf ),
                                                  qtu( option ) );
-    if( p_item )
-    {
-        int i_type = p_item->i_type;
-        for( int i_index = 0; i_index < p_item->i_list; i_index++ )
-        {
-            if( i_type == CONFIG_ITEM_INTEGER
-             || i_type == CONFIG_ITEM_BOOL )
-                combobox->addItem( qtr( p_item->ppsz_list_text[i_index] ),
-                                   p_item->pi_list[i_index] );
-            else if( i_type == CONFIG_ITEM_STRING )
-                combobox->addItem( qtr( p_item->ppsz_list_text[i_index] ),
-                                   p_item->ppsz_list[i_index] );
-        }
-    }
-    else
+    if( p_item == NULL )
     {
         msg_Err( p_intf, "Couldn't find option \"%s\".", qtu( option ) );
+        return;
+    }
+
+    if( p_item->i_type == CONFIG_ITEM_INTEGER
+     || p_item->i_type == CONFIG_ITEM_BOOL )
+    {
+        int64_t *values;
+        char **texts;
+        ssize_t count = config_GetIntChoices( VLC_OBJECT( p_intf ),
+                                              qtu( option ), &values, &texts );
+        for( ssize_t i = 0; i < count; i++ )
+        {
+            combobox->addItem( qtr( texts[i] ), qlonglong(values[i]) );
+            free( texts[i] );
+        }
+        free( texts );
+        free( values );
+    }
+    else if( p_item->i_type == CONFIG_ITEM_STRING )
+    {
+        char **values;
+        char **texts;
+        ssize_t count = config_GetPszChoices( VLC_OBJECT( p_intf ),
+                                              qtu( option ), &values, &texts );
+        for( ssize_t i = 0; i < count; i++ )
+        {
+            combobox->addItem( qtr( texts[i] ), qfu(values[i]) );
+            free( texts[i] );
+            free( values[i] );
+        }
+        free( texts );
+        free( values );
     }
 }
 
@@ -667,7 +687,8 @@ void ExtVideo::gotoConf( QObject* src )
     SHOWCONF( "puzzle" );
     SHOWCONF( "wall" );
     SHOWCONF( "gradient" );
-    SHOWCONF( "colorthres" )
+    SHOWCONF( "colorthres" );
+    SHOWCONF( "anaglyph" )
 }
 #endif
 
@@ -1259,8 +1280,6 @@ Compressor::Compressor( intf_thread_t *_p_intf, QWidget *_parent )
 
         oldControlVars[i] = comp_controls[i].f_value;
 
-        CONNECT( compCtrl[i], valueChanged( int ), this, setInitValues() );
-
         ctrl_texts[i] = new QLabel( qtr( comp_controls[i].psz_descs ) + "\n" );
         ctrl_texts[i]->setFont( smallFont );
         ctrl_texts[i]->setAlignment( Qt::AlignHCenter );
@@ -1273,6 +1292,9 @@ Compressor::Compressor( intf_thread_t *_p_intf, QWidget *_parent )
         layout->addWidget( ctrl_readout[i], 2, i, Qt::AlignHCenter );
         layout->addWidget( ctrl_texts[i],   3, i, Qt::AlignHCenter );
     }
+
+    for( int i = 0; i < NUM_CP_CTRL; i++ )
+        CONNECT( compCtrl[i], valueChanged( int ), this, setInitValues() );
 
     BUTTONACT( enableCheck, enable() );
 
@@ -1403,8 +1425,6 @@ Spatializer::Spatializer( intf_thread_t *_p_intf, QWidget *_parent )
         spatCtrl[i]->setValue( (int)var_InheritFloat( p_intf, spat_controls[i].psz_name ) * 10. );
         oldControlVars[i] = spatCtrl[i]->value();
 
-        CONNECT( spatCtrl[i], valueChanged( int ), this, setInitValues() );
-
         ctrl_texts[i] = new QLabel( qtr( spat_controls[i].psz_desc ) + "\n" );
         ctrl_texts[i]->setFont( smallFont );
 
@@ -1417,6 +1437,9 @@ Spatializer::Spatializer( intf_thread_t *_p_intf, QWidget *_parent )
         spatCtrl[i]->setRange( 0, 10 );
     }
     spatCtrl[0]->setRange( 0, 11 );
+
+    for( int i = 0; i < NUM_SP_CTRL; i++ )
+        CONNECT( spatCtrl[i], valueChanged( int ), this, setInitValues() );
 
     BUTTONACT( enableCheck, enable() );
 

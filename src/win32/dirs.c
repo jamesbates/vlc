@@ -29,9 +29,7 @@
 #include <vlc_common.h>
 
 #include <w32api.h>
-#ifndef UNDER_CE
-# include <direct.h>
-#endif
+#include <direct.h>
 #include <shlobj.h>
 
 #include "../libvlc.h"
@@ -69,46 +67,12 @@ char *config_GetDataDir (void)
     return (path != NULL) ? strdup (path) : config_GetLibDir ();
 }
 
-const char *config_GetConfDir (void)
-{
-    static char appdir[PATH_MAX] = "";
-    wchar_t wdir[MAX_PATH];
-
-#warning FIXME: thread-safety!
-    if (*appdir)
-        return appdir;
-
-#if defined (UNDER_CE)
-    /*There are some errors in cegcc headers*/
-#undef SHGetSpecialFolderPath
-    BOOL WINAPI SHGetSpecialFolderPath(HWND,LPWSTR,int,BOOL);
-    if( SHGetSpecialFolderPath( NULL, wdir, CSIDL_APPDATA, 1 ) )
-#else
-    /* Get the "Application Data" folder for all users */
-    if( S_OK == SHGetFolderPathW( NULL, CSIDL_COMMON_APPDATA
-              | CSIDL_FLAG_CREATE, NULL, SHGFP_TYPE_CURRENT, wdir ) )
-#endif
-    {
-        WideCharToMultiByte (CP_UTF8, 0, wdir, -1,
-                             appdir, PATH_MAX, NULL, NULL);
-        return appdir;
-    }
-    return NULL;
-}
-
 static char *config_GetShellDir (int csidl)
 {
     wchar_t wdir[MAX_PATH];
 
-#if defined (UNDER_CE)
-    /*There are some errors in cegcc headers*/
-#undef SHGetSpecialFolderPath
-    BOOL WINAPI SHGetSpecialFolderPath(HWND,LPWSTR,int,BOOL);
-    if (SHGetSpecialFolderPath (NULL, wdir, CSIDL_APPDATA, 1))
-#else
     if (SHGetFolderPathW (NULL, csidl | CSIDL_FLAG_CREATE,
                           NULL, SHGFP_TYPE_CURRENT, wdir ) == S_OK)
-#endif
         return FromWide (wdir);
     return NULL;
 }

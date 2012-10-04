@@ -42,15 +42,11 @@
 #include <vlc_cpu.h>
 #include <assert.h>
 
-#ifdef HAVE_LIBAVCODEC_AVCODEC_H
-#   include <libavcodec/avcodec.h>
-#   ifdef HAVE_AVCODEC_DXVA2
-#       define DXVA2API_USE_BITFIELDS
-#       define COBJMACROS
-#       include <libavcodec/dxva2.h>
-#   endif
-#else
-#   include <avcodec.h>
+#include <libavcodec/avcodec.h>
+#ifdef HAVE_AVCODEC_DXVA2
+#    define DXVA2API_USE_BITFIELDS
+#    define COBJMACROS
+#    include <libavcodec/dxva2.h>
 #endif
 
 #include "avcodec.h"
@@ -65,6 +61,7 @@
 #include <commctrl.h>
 #include <shlwapi.h>
 #include <d3d9.h>
+#include <dxva2api.h>
 
 #include <initguid.h> /* must be last included to not redefine existing GUIDs */
 
@@ -75,15 +72,12 @@
 #ifdef __MINGW32__
 # include <_mingw.h>
 
-# if defined(__MINGW64_VERSION_MAJOR) && __MINGW64_VERSION_MAJOR < 3
-#  undef  IDirect3DDeviceManager9_Release
-#  define IDirect3DDeviceManager9_Release(This) (This)->lpVtbl->Release(This)
-# endif
-
-# if !defined(__MINGW64_VERSION_MAJOR) || __MINGW64_VERSION_MAJOR < 3
+# if !defined(__MINGW64_VERSION_MAJOR)
 #  undef MS_GUID
 #  define MS_GUID DEFINE_GUID /* dxva2api.h fails to declare those, redefine as static */
 #  define DXVA2_E_NEW_VIDEO_DEVICE MAKE_HRESULT(1, 4, 4097)
+# else
+#  include <dxva.h>
 # endif
 
 #endif /* __MINGW32__ */
@@ -442,7 +436,7 @@ static int Get(vlc_va_t *external, AVFrame *ff)
     }
 
     /* Grab an unused surface, in case none are, try the oldest
-     * XXX using the oldest is a workaround in case a problem happens with ffmpeg */
+     * XXX using the oldest is a workaround in case a problem happens with libavcodec */
     unsigned i, old;
     for (i = 0, old = 0; i < va->surface_count; i++) {
         vlc_va_surface_t *surface = &va->surface[i];
@@ -611,10 +605,10 @@ static int D3dCreateDevice(vlc_va_dxva2_t *va)
 
     /* Direct3D needs a HWND to create a device, even without using ::Present
     this HWND is used to alert Direct3D when there's a change of focus window.
-    For now, use GetShellWindow, as it looks harmless */
+    For now, use GetDesktopWindow, as it looks harmless */
     LPDIRECT3DDEVICE9 d3ddev;
     if (FAILED(IDirect3D9_CreateDevice(d3dobj, D3DADAPTER_DEFAULT,
-                                       D3DDEVTYPE_HAL, GetShellWindow(),
+                                       D3DDEVTYPE_HAL, GetDesktopWindow(),
                                        D3DCREATE_SOFTWARE_VERTEXPROCESSING |
                                        D3DCREATE_MULTITHREADED,
                                        d3dpp, &d3ddev))) {

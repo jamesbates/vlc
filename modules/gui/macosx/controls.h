@@ -1,7 +1,7 @@
 /*****************************************************************************
  * controls.h: MacOS X interface module
  *****************************************************************************
- * Copyright (C) 2002-2011 VLC authors and VideoLAN
+ * Copyright (C) 2002-2012 VLC authors and VideoLAN
  * $Id$
  *
  * Authors: Jon Lech Johansen <jon-vl@nanocrew.net>
@@ -40,6 +40,7 @@
     IBOutlet id o_specificTime_stepper;
     IBOutlet id o_specificTime_mi;
 }
+
 - (IBAction)play:(id)sender;
 - (IBAction)stop:(id)sender;
 
@@ -66,7 +67,6 @@
 - (IBAction)addSubtitleFile:(id)sender;
 
 - (BOOL)keyEvent:(NSEvent *)o_event;
-- (void)scrollWheel: (NSEvent *)theEvent;
 
 - (IBAction)goToSpecificTime:(id)sender;
 @end

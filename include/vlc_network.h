@@ -33,13 +33,10 @@
  */
 
 #if defined( WIN32 )
-#   if !defined(UNDER_CE)
-#       define _NO_OLDNAMES 1
-#       include <io.h>
-#   endif
+#   define _NO_OLDNAMES 1
+#   include <io.h>
 #   include <winsock2.h>
 #   include <ws2tcpip.h>
-#   define ENETUNREACH WSAENETUNREACH
 #   define net_errno (WSAGetLastError())
 extern const char *net_strerror( int val );
 
@@ -82,7 +79,7 @@ struct msghdr
 #   undef IPV6_JOIN_GROUP
 #endif
 
-int vlc_socket (int, int, int, bool nonblock) VLC_USED;
+VLC_API int vlc_socket (int, int, int, bool nonblock) VLC_USED;
 
 struct sockaddr;
 VLC_API int vlc_accept( int, struct sockaddr *, socklen_t *, bool ) VLC_USED;
@@ -225,6 +222,9 @@ VLC_API ssize_t net_vaPrintf( vlc_object_t *p_this, int fd, const v_socket_t *, 
 #ifndef AI_NUMERICSERV
 # define AI_NUMERICSERV 0
 #endif
+#ifndef AI_IDN
+# define AI_IDN 0 /* GNU/libc extension */
+#endif
 
 #ifdef __OS2__
 # ifndef NI_NUMERICHOST
@@ -261,7 +261,8 @@ VLC_API int  getnameinfo ( const struct sockaddr *, socklen_t,
 #endif
 
 VLC_API int vlc_getnameinfo( const struct sockaddr *, int, char *, int, int *, int );
-VLC_API int vlc_getaddrinfo( vlc_object_t *, const char *, int, const struct addrinfo *, struct addrinfo ** );
+VLC_API int vlc_getaddrinfo (const char *, unsigned,
+                             const struct addrinfo *, struct addrinfo **);
 
 
 #ifdef __OS2__

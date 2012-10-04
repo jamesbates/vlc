@@ -34,7 +34,7 @@
 #include "chroma.h"
 
 /*****************************************************************************
- * Chroma fourcc -> ffmpeg_id mapping
+ * Chroma fourcc -> libavutil pixfmt mapping
  *****************************************************************************/
 #if defined(WORDS_BIGENDIAN)
 #   define VLC_RGB_ES( fcc, leid, beid ) \
@@ -64,10 +64,8 @@ static const struct
     {VLC_CODEC_I444, PIX_FMT_YUV444P, 0, 0, 0 },
     {VLC_CODEC_J444, PIX_FMT_YUVJ444P, 0, 0, 0 },
 
-#if LIBAVUTIL_VERSION_INT >= ((49<<16)+(5<<8)+0)
     {VLC_CODEC_I440, PIX_FMT_YUV440P, 0, 0, 0 },
     {VLC_CODEC_J440, PIX_FMT_YUVJ440P, 0, 0, 0 },
-#endif
 
     {VLC_CODEC_I422, PIX_FMT_YUV422P, 0, 0, 0 },
     {VLC_CODEC_J422, PIX_FMT_YUVJ422P, 0, 0, 0 },

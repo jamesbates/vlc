@@ -239,7 +239,21 @@
 #define ATOM_0xa9mod VLC_FOURCC( 0xa9, 'm', 'o', 'd' )
 #define ATOM_0xa9PRD VLC_FOURCC( 0xa9, 'P', 'R', 'D' )
 #define ATOM_0xa9grp VLC_FOURCC( 0xa9, 'g', 'r', 'p' )
-#define ATOM_0xa9lyr VLC_FOURCC( 0xa9, 'g', 'r', 'p' )
+#define ATOM_0xa9lyr VLC_FOURCC( 0xa9, 'l', 'y', 'r' )
+#define ATOM_0xa9gen VLC_FOURCC( 0xa9, 'g', 'e', 'n' )
+#define ATOM_0xa9st3 VLC_FOURCC( 0xa9, 's', 't', '3' )
+#define ATOM_0xa9ard VLC_FOURCC( 0xa9, 'a', 'r', 'd' )
+#define ATOM_0xa9arg VLC_FOURCC( 0xa9, 'a', 'r', 'g' )
+#define ATOM_0xa9cak VLC_FOURCC( 0xa9, 'c', 'a', 'k' )
+#define ATOM_0xa9con VLC_FOURCC( 0xa9, 'c', 'o', 'n' )
+#define ATOM_0xa9des VLC_FOURCC( 0xa9, 'd', 'e', 's' )
+#define ATOM_0xa9lnt VLC_FOURCC( 0xa9, 'l', 'n', 't' )
+#define ATOM_0xa9phg VLC_FOURCC( 0xa9, 'p', 'h', 'g' )
+#define ATOM_0xa9pub VLC_FOURCC( 0xa9, 'p', 'u', 'b' )
+#define ATOM_0xa9sne VLC_FOURCC( 0xa9, 's', 'n', 'e' )
+#define ATOM_0xa9sol VLC_FOURCC( 0xa9, 's', 'o', 'l' )
+#define ATOM_0xa9thx VLC_FOURCC( 0xa9, 't', 'h', 'x' )
+#define ATOM_0xa9xpd VLC_FOURCC( 0xa9, 'x', 'p', 'd' )
 #define ATOM_chpl VLC_FOURCC( 'c', 'h', 'p', 'l' )
 #define ATOM_WLOC VLC_FOURCC( 'W', 'L', 'O', 'C' )
 
@@ -935,7 +949,7 @@ typedef struct MP4_Box_data_trun_s
     uint32_t i_sample_count;
 
     /* optional fields */
-    uint32_t i_data_offset;
+    int32_t i_data_offset;
     uint32_t i_first_sample_flags;
 
     MP4_descriptor_trun_sample_t *p_samples;
@@ -1114,6 +1128,26 @@ typedef struct
     uint8_t *p_sample_number;
 } MP4_Box_data_tfra_t;
 
+typedef struct
+{
+    uint64_t i_duration;
+    uint32_t i_timescale;
+    uint16_t i_track_ID;
+    uint8_t  i_es_cat;
+
+    uint32_t FourCC;
+    uint32_t Bitrate;
+    uint32_t MaxWidth;
+    uint32_t MaxHeight;
+    uint32_t SamplingRate;
+    uint32_t Channels;
+    uint32_t BitsPerSample;
+    uint32_t AudioTag;
+    uint16_t nBlockAlign;
+    uint8_t  cpd_len;
+    uint8_t  *CodecPrivateData;
+} MP4_Box_data_stra_t;
+
 /*
 typedef struct MP4_Box_data__s
 {
@@ -1164,6 +1198,7 @@ typedef union MP4_Box_data_s
 
     MP4_Box_data_tfra_t *p_tfra;
     MP4_Box_data_mfro_t *p_mfro;
+    MP4_Box_data_stra_t *p_stra;
 
     MP4_Box_data_stsz_t *p_stsz;
     MP4_Box_data_stz2_t *p_stz2;
@@ -1311,7 +1346,8 @@ typedef struct
     MP4_Box_t *p_sample;/* point on actual sdsd */
 
     bool b_drms;
-    bool b_end_of_chunk;
+    bool b_has_non_empty_cchunk;
+    bool b_codec_need_restart;
     void      *p_drms;
     MP4_Box_t *p_skcr;
 
@@ -1433,14 +1469,15 @@ static const UUID_t TfxdBoxUUID = {
                 { 0x6d, 0x1d, 0x9b, 0x05, 0x42, 0xd5, 0x44, 0xe6,
                   0x80, 0xe2, 0x14, 0x1d, 0xaf, 0xf7, 0x57, 0xb2 } };
 
+static const UUID_t SmooBoxUUID = {
+                { 0xe1, 0xda, 0x72, 0xba, 0x24, 0xd7, 0x43, 0xc3,
+                  0xa6, 0xa5, 0x1b, 0x57, 0x59, 0xa1, 0xa9, 0x2c } };
 
-/*****************************************************************************
- * MP4_BoxGetInitFrag : Parse the initialization segment.
- *****************************************************************************
- *  The first box is a virtual box "root", and is the father of the boxes
- *  'ftyp' and 'moov'.
- *****************************************************************************/
-MP4_Box_t *MP4_BoxGetInitFrag( stream_t * );
+static const UUID_t StraBoxUUID = {
+                { 0xb0, 0x3e, 0xf7, 0x70, 0x33, 0xbd, 0x4b, 0xac,
+                  0x96, 0xc7, 0xbf, 0x25, 0xf9, 0x7e, 0x24, 0x47 } };
+
+MP4_Box_t *MP4_BoxGetSmooBox( stream_t * );
 
 /*****************************************************************************
  * MP4_BoxGetNextChunk : Parse the entire moof box.

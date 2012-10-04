@@ -38,6 +38,7 @@
 #include <vlc_rand.h>
 #include <vlc_charset.h>
 #include <vlc_url.h>
+#include <vlc_mime.h>
 #include "../libvlc.h"
 
 #include <string.h>
@@ -51,9 +52,7 @@
 # include <poll.h>
 #endif
 
-#if defined( UNDER_CE )
-#   include <winsock.h>
-#elif defined( WIN32 )
+#if defined( WIN32 )
 #   include <winsock2.h>
 #else
 #   include <sys/socket.h>
@@ -172,81 +171,6 @@ struct httpd_client_t
 /*****************************************************************************
  * Various functions
  *****************************************************************************/
-static const struct
-{
-    const char psz_ext[8];
-    const char *psz_mime;
-} http_mime[] =
-{
-    { ".htm",   "text/html" },
-    { ".html",  "text/html" },
-    { ".txt",   "text/plain" },
-    { ".xml",   "text/xml" },
-    { ".dtd",   "text/dtd" },
-
-    { ".css",   "text/css" },
-
-    /* image mime */
-    { ".gif",   "image/gif" },
-    { ".jpe",   "image/jpeg" },
-    { ".jpg",   "image/jpeg" },
-    { ".jpeg",  "image/jpeg" },
-    { ".png",   "image/png" },
-    /* same as modules/mux/mpjpeg.c here: */
-    { ".mpjpeg","multipart/x-mixed-replace; boundary=7b3cc56e5f51db803f790dad720ed50a" },
-
-    /* media mime */
-    { ".avi",   "video/avi" },
-    { ".asf",   "video/x-ms-asf" },
-    { ".m1a",   "audio/mpeg" },
-    { ".m2a",   "audio/mpeg" },
-    { ".m1v",   "video/mpeg" },
-    { ".m2v",   "video/mpeg" },
-    { ".mp2",   "audio/mpeg" },
-    { ".mp3",   "audio/mpeg" },
-    { ".mpa",   "audio/mpeg" },
-    { ".mpg",   "video/mpeg" },
-    { ".mpeg",  "video/mpeg" },
-    { ".mpe",   "video/mpeg" },
-    { ".mov",   "video/quicktime" },
-    { ".moov",  "video/quicktime" },
-    { ".oga",   "audio/ogg" },
-    { ".ogg",   "application/ogg" },
-    { ".ogm",   "application/ogg" },
-    { ".ogv",   "video/ogg" },
-    { ".ogx",   "application/ogg" },
-    { ".spx",   "audio/ogg" },
-    { ".wav",   "audio/wav" },
-    { ".wma",   "audio/x-ms-wma" },
-    { ".wmv",   "video/x-ms-wmv" },
-
-
-    /* end */
-    { "",       "" }
-};
-
-static const char *httpd_MimeFromUrl( const char *psz_url )
-{
-
-    char *psz_ext;
-
-    psz_ext = strrchr( psz_url, '.' );
-    if( psz_ext )
-    {
-        int i;
-
-        for( i = 0; http_mime[i].psz_ext[0] ; i++ )
-        {
-            if( !strcasecmp( http_mime[i].psz_ext, psz_ext ) )
-            {
-                return http_mime[i].psz_mime;
-            }
-        }
-    }
-    return "application/octet-stream";
-}
-
-
 typedef struct
 {
     unsigned   i_code;
@@ -459,7 +383,7 @@ httpd_file_t *httpd_FileNew( httpd_host_t *host,
     }
     else
     {
-        file->psz_mime = strdup( httpd_MimeFromUrl( psz_url ) );
+        file->psz_mime = strdup( vlc_mime_Ext2Mime( psz_url ) );
     }
 
     file->pf_fill = pf_fill;
@@ -857,7 +781,7 @@ httpd_stream_t *httpd_StreamNew( httpd_host_t *host,
     }
     else
     {
-        stream->psz_mime = strdup( httpd_MimeFromUrl( psz_url ) );
+        stream->psz_mime = strdup( vlc_mime_Ext2Mime( psz_url ) );
     }
     stream->i_header = 0;
     stream->p_header = NULL;
@@ -1004,7 +928,7 @@ httpd_host_t *vlc_https_HostNew( vlc_object_t *obj )
     return httpd_HostCreate( obj, "http-host", "https-port", tls );
 
 error:
-    vlc_tls_ServerDelete( tls );
+    vlc_tls_Delete( tls );
     return NULL;
 }
 
@@ -1063,8 +987,7 @@ static httpd_host_t *httpd_HostCreate( vlc_object_t *p_this,
 
         vlc_mutex_unlock( &httpd.mutex );
         vlc_UrlClean( &url );
-        if( p_tls != NULL )
-            vlc_tls_ServerDelete( p_tls );
+        vlc_tls_Delete( p_tls );
         return host;
     }
 
@@ -1127,10 +1050,7 @@ error:
     }
 
     vlc_UrlClean( &url );
-
-    if( p_tls != NULL )
-        vlc_tls_ServerDelete( p_tls );
-
+    vlc_tls_Delete( p_tls );
     return NULL;
 }
 
@@ -1145,10 +1065,7 @@ void httpd_HostDelete( httpd_host_t *host )
     vlc_mutex_lock( &host->lock );
     host->i_ref--;
     if( host->i_ref == 0 )
-    {
-        vlc_cond_signal( &host->wait );
         delete = true;
-    }
     vlc_mutex_unlock( &host->lock );
     if( !delete )
     {
@@ -1159,7 +1076,7 @@ void httpd_HostDelete( httpd_host_t *host )
     }
     TAB_REMOVE( httpd.i_host, httpd.host, host );
 
-    vlc_object_kill( host );
+    vlc_cancel( host->thread );
     vlc_join( host->thread, NULL );
 
     msg_Dbg( host, "HTTP host removed" );
@@ -1179,9 +1096,7 @@ void httpd_HostDelete( httpd_host_t *host )
         /* TODO */
     }
 
-    if( host->p_tls != NULL)
-        vlc_tls_ServerDelete( host->p_tls );
-
+    vlc_tls_Delete( host->p_tls );
     net_ListenClose( host->fds );
     vlc_cond_destroy( &host->wait );
     vlc_mutex_destroy( &host->lock );
@@ -1379,7 +1294,7 @@ static void httpd_ClientClean( httpd_client_t *cl )
     if( cl->fd >= 0 )
     {
         if( cl->p_tls != NULL )
-            vlc_tls_ServerSessionDelete( cl->p_tls );
+            vlc_tls_SessionDelete( cl->p_tls );
         net_Close( cl->fd );
         cl->fd = -1;
     }
@@ -1403,6 +1318,8 @@ static httpd_client_t *httpd_ClientNew( int fd, vlc_tls_t *p_tls, mtime_t now )
     cl->p_tls = p_tls;
 
     httpd_ClientInit( cl, now );
+    if( p_tls != NULL )
+        cl->i_state = HTTPD_CLIENT_TLS_HS_OUT;
 
     return cl;
 }
@@ -1810,7 +1727,7 @@ static void httpd_ClientRecv( httpd_client_t *cl )
     }
 
     /* check if the client is to be set to dead */
-#if defined( WIN32 ) || defined( UNDER_CE )
+#if defined( WIN32 )
     if( ( i_len < 0 && WSAGetLastError() != WSAEWOULDBLOCK ) || ( i_len == 0 ) )
 #else
     if( ( i_len < 0 && errno != EAGAIN ) || ( i_len == 0 ) )
@@ -1949,7 +1866,7 @@ static void httpd_ClientSend( httpd_client_t *cl )
     }
     else
     {
-#if defined( WIN32 ) || defined( UNDER_CE )
+#if defined( WIN32 )
         if( ( i_len < 0 && WSAGetLastError() != WSAEWOULDBLOCK ) || ( i_len == 0 ) )
 #else
         if( ( i_len < 0 && errno != EAGAIN ) || ( i_len == 0 ) )
@@ -1961,9 +1878,9 @@ static void httpd_ClientSend( httpd_client_t *cl )
     }
 }
 
-static void httpd_ClientTlsHsIn( httpd_client_t *cl )
+static void httpd_ClientTlsHandshake( httpd_client_t *cl )
 {
-    switch( vlc_tls_ServerSessionHandshake( cl->p_tls ) )
+    switch( vlc_tls_SessionHandshake( cl->p_tls, NULL, NULL ) )
     {
         case 0:
             cl->i_state = HTTPD_CLIENT_RECEIVING;
@@ -1971,29 +1888,14 @@ static void httpd_ClientTlsHsIn( httpd_client_t *cl )
 
         case -1:
             cl->i_state = HTTPD_CLIENT_DEAD;
-            cl->p_tls = NULL;
-            break;
-
-        case 2:
-            cl->i_state = HTTPD_CLIENT_TLS_HS_OUT;
-    }
-}
-
-static void httpd_ClientTlsHsOut( httpd_client_t *cl )
-{
-    switch( vlc_tls_ServerSessionHandshake( cl->p_tls ) )
-    {
-        case 0:
-            cl->i_state = HTTPD_CLIENT_RECEIVING;
-            break;
-
-        case -1:
-            cl->i_state = HTTPD_CLIENT_DEAD;
-            cl->p_tls = NULL;
             break;
 
         case 1:
             cl->i_state = HTTPD_CLIENT_TLS_HS_IN;
+            break;
+
+        case 2:
+            cl->i_state = HTTPD_CLIENT_TLS_HS_OUT;
             break;
     }
 }
@@ -2001,11 +1903,12 @@ static void httpd_ClientTlsHsOut( httpd_client_t *cl )
 static void* httpd_HostThread( void *data )
 {
     httpd_host_t *host = data;
-    int evfd = vlc_object_waitpipe( VLC_OBJECT( host ) );
+    int canc = vlc_savecancel();
 
-    for( ;; )
+    vlc_mutex_lock( &host->lock );
+    while( host->i_ref > 0 )
     {
-        struct pollfd ufd[host->nfd + host->i_client + 1];
+        struct pollfd ufd[host->nfd + host->i_client];
         unsigned nfd;
         for( nfd = 0; nfd < host->nfd; nfd++ )
         {
@@ -2015,9 +1918,14 @@ static void* httpd_HostThread( void *data )
         }
 
         /* add all socket that should be read/write and close dead connection */
-        vlc_mutex_lock( &host->lock );
-        while( host->i_url <= 0 && host->i_ref > 0 )
+        while( host->i_url <= 0 )
+        {
+            mutex_cleanup_push( &host->lock );
+            vlc_restorecancel( canc );
             vlc_cond_wait( &host->wait, &host->lock );
+            canc = vlc_savecancel();
+            vlc_cleanup_pop();
+        }
 
         mtime_t now = mdate();
         bool b_low_delay = false;
@@ -2329,14 +2237,14 @@ static void* httpd_HostThread( void *data )
                 b_low_delay = true;
         }
         vlc_mutex_unlock( &host->lock );
-
-        ufd[nfd].fd = evfd;
-        ufd[nfd].events = POLLIN;
-        ufd[nfd].revents = 0;
-        nfd++;
+        vlc_restorecancel( canc );
 
         /* we will wait 20ms (not too big) if HTTPD_CLIENT_WAITING */
-        switch( poll( ufd, nfd, b_low_delay ? 20 : -1) )
+        int ret = poll( ufd, nfd, b_low_delay ? 20 : -1 );
+
+        canc = vlc_savecancel();
+        vlc_mutex_lock( &host->lock );
+        switch( ret )
         {
             case -1:
                 if (errno != EINTR)
@@ -2349,13 +2257,10 @@ static void* httpd_HostThread( void *data )
                 continue;
         }
 
-        if( ufd[nfd - 1].revents )
-            break;
-
         /* Handle client sockets */
-        vlc_mutex_lock( &host->lock );
         now = mdate();
         nfd = host->nfd;
+
         for( int i_client = 0; i_client < host->i_client; i_client++ )
         {
             httpd_client_t *cl = host->client[i_client];
@@ -2379,22 +2284,17 @@ static void* httpd_HostThread( void *data )
             {
                 httpd_ClientSend( cl );
             }
-            else if( cl->i_state == HTTPD_CLIENT_TLS_HS_IN )
+            else if( cl->i_state == HTTPD_CLIENT_TLS_HS_IN
+                  || cl->i_state == HTTPD_CLIENT_TLS_HS_OUT )
             {
-                httpd_ClientTlsHsIn( cl );
-            }
-            else if( cl->i_state == HTTPD_CLIENT_TLS_HS_OUT )
-            {
-                httpd_ClientTlsHsOut( cl );
+                httpd_ClientTlsHandshake( cl );
             }
         }
-        vlc_mutex_unlock( &host->lock );
 
         /* Handle server sockets (accept new connections) */
         for( nfd = 0; nfd < host->nfd; nfd++ )
         {
             httpd_client_t *cl;
-            int i_state = -1;
             int fd = ufd[nfd].fd;
 
             assert (fd == host->fds[nfd]);
@@ -2412,39 +2312,15 @@ static void* httpd_HostThread( void *data )
             vlc_tls_t *p_tls;
 
             if( host->p_tls != NULL )
-            {
-                p_tls = vlc_tls_ServerSessionCreate( host->p_tls, fd );
-                switch( vlc_tls_ServerSessionHandshake( p_tls ) )
-                {
-                    case -1:
-                        msg_Err( host, "Rejecting TLS connection" );
-                        /* p_tls is destroyed implicitly */
-                        net_Close( fd );
-                        fd = -1;
-                        p_tls = NULL;
-                        continue;
-
-                    case 1: /* missing input - most likely */
-                        i_state = HTTPD_CLIENT_TLS_HS_IN;
-                        break;
-
-                    case 2: /* missing output */
-                        i_state = HTTPD_CLIENT_TLS_HS_OUT;
-                        break;
-                }
-            }
+                p_tls = vlc_tls_SessionCreate( host->p_tls, fd, NULL );
             else
                 p_tls = NULL;
 
             cl = httpd_ClientNew( fd, p_tls, now );
-            vlc_mutex_lock( &host->lock );
+
             TAB_APPEND( host->i_client, host->client, cl );
-            vlc_mutex_unlock( &host->lock );
-            if( i_state != -1 )
-                cl->i_state = i_state; // override state for TLS
         }
-
     }
-
+    vlc_mutex_unlock( &host->lock );
     return NULL;
 }

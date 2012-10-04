@@ -75,7 +75,7 @@ void playlist_Deactivate( playlist_t *p_playlist )
     msg_Dbg( p_playlist, "deactivating the playlist" );
 
     PL_LOCK;
-    vlc_object_kill( p_playlist );
+    p_sys->killed = true;
     vlc_cond_signal( &p_sys->signal );
     PL_UNLOCK;
 
@@ -144,7 +144,7 @@ static void UpdateActivity( playlist_t *p_playlist, int i_delta )
  * \param p_cur the current playlist item
  * \return nothing
  */
-static void ResyncCurrentIndex( playlist_t *p_playlist, playlist_item_t *p_cur )
+void ResyncCurrentIndex( playlist_t *p_playlist, playlist_item_t *p_cur )
 {
     PL_ASSERT_LOCKED;
 
@@ -163,7 +163,14 @@ static void ResyncCurrentIndex( playlist_t *p_playlist, playlist_item_t *p_cur )
     PL_DEBUG( "%s is at %i", PLI_NAME( p_cur ), p_playlist->i_current_index );
 }
 
-static void ResetCurrentlyPlaying( playlist_t *p_playlist,
+/**
+ * Reset the currently playing playlist.
+ *
+ * \param p_playlist the playlist structure
+ * \param p_cur the current playlist item
+ * \return nothing
+ */
+void ResetCurrentlyPlaying( playlist_t *p_playlist,
                                    playlist_item_t *p_cur )
 {
     playlist_private_t *p_sys = pl_priv(p_playlist);
@@ -454,7 +461,7 @@ static int LoopInput( playlist_t *p_playlist )
     if( !p_input )
         return VLC_EGENERIC;
 
-    if( ( p_sys->request.b_request || !vlc_object_alive( p_playlist ) ) && !p_input->b_die )
+    if( ( p_sys->request.b_request || p_sys->killed ) && !p_input->b_die )
     {
         PL_DEBUG( "incoming request - stopping current input" );
         input_Stop( p_input, true );
@@ -512,7 +519,7 @@ static void LoopRequest( playlist_t *p_playlist )
     const int i_status = p_sys->request.b_request ?
                          p_sys->request.i_status : p_sys->status.i_status;
 
-    if( i_status == PLAYLIST_STOPPED || !vlc_object_alive( p_playlist ) )
+    if( i_status == PLAYLIST_STOPPED || p_sys->killed )
     {
         p_sys->status.i_status = PLAYLIST_STOPPED;
 
@@ -530,7 +537,7 @@ static void LoopRequest( playlist_t *p_playlist )
         }
         else
         {
-            if( vlc_object_alive( p_playlist ) )
+            if( !p_sys->killed )
                 vlc_cond_wait( &p_sys->signal, &p_sys->lock );
         }
         return;
@@ -540,6 +547,7 @@ static void LoopRequest( playlist_t *p_playlist )
     if( p_item )
     {
         msg_Dbg( p_playlist, "starting playback of the new playlist item" );
+        ResyncCurrentIndex( p_playlist, p_item );
         PlayItem( p_playlist, p_item );
         return;
     }
@@ -563,7 +571,7 @@ static void *Thread ( void *data )
     playlist_private_t *p_sys = pl_priv(p_playlist);
 
     playlist_Lock( p_playlist );
-    while( vlc_object_alive( p_playlist ) || p_sys->p_input )
+    while( !p_sys->killed || p_sys->p_input )
     {
         /* FIXME: what's that ! */
         if( p_sys->b_reset_currently_playing &&

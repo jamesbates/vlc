@@ -79,17 +79,12 @@ void VlcProc::destroy( intf_thread_t *pIntf )
 #define SET_STREAMTIME(m,v,b) ((StreamTime*)(m).get())->set(v,b)
 #define SET_TEXT(m,v)         ((VarText*)(m).get())->set(v)
 #define SET_STRING(m,v)       ((VarString*)(m).get())->set(v)
-#define SET_VOLUME(m,v,b)     ((Volume*)(m).get())->set(v,b)
+#define SET_VOLUME(m,v,b)     ((Volume*)(m).get())->setVolume(v,b)
 
 VlcProc::VlcProc( intf_thread_t *pIntf ): SkinObject( pIntf ),
     m_varEqBands( pIntf ), m_pVout( NULL ), m_pAout( NULL ),
-    m_bEqualizer_started( false ), m_cmdManage( this )
+    m_bEqualizer_started( false )
 {
-    // Create a timer to poll the status of the vlc
-    OSFactory *pOsFactory = OSFactory::instance( pIntf );
-    m_pTimer = pOsFactory->createOSTimer( m_cmdManage );
-    m_pTimer->start( 100, false );
-
     // Create and register VLC variables
     VarManager *pVarManager = VarManager::instance( getIntf() );
 
@@ -190,16 +185,11 @@ VlcProc::VlcProc( intf_thread_t *pIntf ): SkinObject( pIntf ),
 
     // initialize variables refering to liblvc and playlist objects
     init_variables();
-
-    interaction_Register( pIntf );
 }
 
 
 VlcProc::~VlcProc()
 {
-    m_pTimer->stop();
-    delete( m_pTimer );
-
     if( m_pAout )
     {
         vlc_object_release( m_pAout );
@@ -210,8 +200,6 @@ VlcProc::~VlcProc()
         vlc_object_release( m_pVout );
         m_pVout = NULL;
     }
-
-    interaction_Unregister( getIntf() );
 
     var_DelCallback( getIntf()->p_sys->p_playlist, "volume",
                      onGenericCallback, this );
@@ -237,28 +225,6 @@ VlcProc::~VlcProc()
                      onItemChange, this );
     var_DelCallback( getIntf(), "interaction", onInteraction, this );
 }
-
-void VlcProc::manage()
-{
-    // Did the user request to quit vlc ?
-    if( !vlc_object_alive( getIntf() ) )
-    {
-        // Get the instance of OSFactory
-        OSFactory *pOsFactory = OSFactory::instance( getIntf() );
-
-        // Exit the main OS loop
-        pOsFactory->getOSLoop()->exit();
-
-        return;
-    }
-}
-
-void VlcProc::CmdManage::execute()
-{
-    // Just forward to VlcProc
-    m_pParent->manage();
-}
-
 
 int VlcProc::onInputNew( vlc_object_t *pObj, const char *pVariable,
                          vlc_value_t oldval, vlc_value_t newval, void *pParam )
@@ -727,9 +693,8 @@ void VlcProc::on_volume_changed( vlc_object_t* p_obj, vlc_value_t newVal )
     (void)p_obj; (void)newVal;
     playlist_t* pPlaylist = getIntf()->p_sys->p_playlist;
 
-    audio_volume_t volume = aout_VolumeGet( pPlaylist );
-    SET_VOLUME( m_cVarVolume, volume, false );
-    bool b_is_muted = aout_IsMuted( VLC_OBJECT(pPlaylist) );
+    SET_VOLUME( m_cVarVolume, var_GetFloat( pPlaylist, "volume" ), false );
+    bool b_is_muted = aout_MuteGet( pPlaylist ) > 0;
     SET_BOOL( m_cVarMute, b_is_muted );
 }
 
@@ -832,9 +797,8 @@ void VlcProc::init_variables()
     SET_BOOL( m_cVarLoop, var_GetBool( pPlaylist, "loop" ) );
     SET_BOOL( m_cVarRepeat, var_GetBool( pPlaylist, "repeat" ) );
 
-    audio_volume_t volume = aout_VolumeGet( pPlaylist );
-    SET_VOLUME( m_cVarVolume, volume, false );
-    bool b_is_muted = aout_IsMuted( VLC_OBJECT(pPlaylist) );
+    SET_VOLUME( m_cVarVolume, var_GetFloat( pPlaylist, "volume" ), false );
+    bool b_is_muted = aout_MuteGet( pPlaylist ) > 0;
     SET_BOOL( m_cVarMute, b_is_muted );
 
     update_equalizer();

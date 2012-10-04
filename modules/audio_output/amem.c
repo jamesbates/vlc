@@ -62,15 +62,19 @@ struct aout_sys_t
     void (*drain) (void *opaque);
     int (*set_volume) (void *opaque, float vol, bool mute);
     void (*cleanup) (void *opaque);
+    float volume;
+    bool mute;
 };
 
-static void Play (audio_output_t *aout, block_t *block)
+static void Play (audio_output_t *aout, block_t *block,
+                  mtime_t *restrict drift)
 {
     aout_sys_t *sys = aout->sys;
 
     sys->play (sys->opaque, block->p_buffer, block->i_nb_samples,
                block->i_pts);
     block_Release (block);
+    (void) drift;
 }
 
 static void Pause (audio_output_t *aout, bool paused, mtime_t date)
@@ -91,11 +95,41 @@ static void Flush (audio_output_t *aout, bool wait)
         cb (sys->opaque);
 }
 
-static int VolumeSet (audio_output_t *aout, float vol, bool mute)
+static int VolumeSet (audio_output_t *aout, float vol)
 {
     aout_sys_t *sys = aout->sys;
 
-    return sys->set_volume (sys->opaque, vol, mute) ? -1 : 0;
+    sys->volume = vol;
+    return sys->set_volume (sys->opaque, vol, sys->mute) ? -1 : 0;
+}
+
+static int MuteSet (audio_output_t *aout, bool mute)
+{
+    aout_sys_t *sys = aout->sys;
+
+    sys->mute = mute;
+    return sys->set_volume (sys->opaque, sys->volume, mute) ? -1 : 0;
+}
+
+static int SoftVolumeSet (audio_output_t *aout, float vol)
+{
+    aout_sys_t *sys = aout->sys;
+
+    vol = vol * vol * vol;
+    if (!sys->mute && aout_GainRequest (aout, vol))
+        return -1;
+    sys->volume = vol;
+    return 0;
+}
+
+static int SoftMuteSet (audio_output_t *aout, bool mute)
+{
+    aout_sys_t *sys = aout->sys;
+
+    if (aout_GainRequest (aout, mute ? 0.f : sys->volume))
+        return -1;
+    sys->mute = mute;
+    return 0;
 }
 
 typedef int (*vlc_audio_format_cb) (void **, char *, unsigned *, unsigned *);
@@ -116,6 +150,8 @@ static int Open (vlc_object_t *obj)
     sys->drain = var_InheritAddress (obj, "amem-drain");
     sys->set_volume = var_InheritAddress (obj, "amem-set-volume");
     sys->cleanup = NULL; /* defer */
+    sys->volume = 1.;
+    sys->mute = false;
     if (sys->play == NULL)
         goto error;
 
@@ -203,9 +239,15 @@ static int Open (vlc_object_t *obj)
     aout->pf_pause = Pause;
     aout->pf_flush = Flush;
     if (sys->set_volume != NULL)
-        aout->pf_volume_set = VolumeSet;
+    {
+        aout->volume_set = VolumeSet;
+        aout->mute_set = MuteSet;
+    }
     else
-        aout_VolumeSoftInit (aout);
+    {
+        aout->volume_set = SoftVolumeSet;
+        aout->mute_set = SoftMuteSet;
+    }
     return VLC_SUCCESS;
 
 error:

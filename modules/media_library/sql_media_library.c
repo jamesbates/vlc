@@ -129,6 +129,8 @@ vlc_module_begin()
             RECURSIVE_LONGTEXT, false )
     add_bool( "ml-auto-add", true,  N_("Auto add new medias"),
             N_( "Automatically add new medias to ML" ), false )
+    add_bool( "ml-synchronous", true,  N_("Use transactions"),
+            N_( "Disabling transactions saves I/O but can corrupt database in case of crash" ), false )
 vlc_module_end()
 
 
@@ -157,7 +159,12 @@ static int load( vlc_object_t *obj )
     vlc_mutex_init( &p_ml->p_sys->lock );
 
     /* Initialise Sql module */
-    InitDatabase( p_ml );
+    if ( InitDatabase( p_ml ) != VLC_SUCCESS )
+    {
+        vlc_mutex_destroy( &p_ml->p_sys->lock );
+        free( p_ml->p_sys );
+        return VLC_EGENERIC;
+    }
 
     /* Initialise the media pool */
     ARRAY_INIT( p_ml->p_sys->mediapool );
@@ -796,6 +803,10 @@ int CreateEmptyDatabase( media_library_t *p_ml )
     if( i_ret != VLC_SUCCESS )
         goto quit_createemptydatabase;
 
+    i_ret = QuerySimple( p_ml, "CREATE INDEX album_title_index ON album (title);" );
+    if( i_ret != VLC_SUCCESS )
+        goto quit_createemptydatabase;
+
     /* Add "unknown" entry to albums */
     i_ret = QuerySimple( p_ml,
                         "INSERT INTO album ( id, title, cover, album_artist_id ) "
@@ -835,6 +846,10 @@ int CreateEmptyDatabase( media_library_t *p_ml )
                         "directory_id INTEGER,"
                         "CONSTRAINT associated_album FOREIGN KEY(album_id) "
             "REFERENCES album(id) ON DELETE SET DEFAULT ON UPDATE RESTRICT)" );
+    if( i_ret != VLC_SUCCESS )
+        goto quit_createemptydatabase;
+
+    i_ret = QuerySimple( p_ml, "CREATE INDEX media_ui_index ON media (uri);" );
     if( i_ret != VLC_SUCCESS )
         goto quit_createemptydatabase;
 
@@ -1020,6 +1035,33 @@ quit_createemptydatabase:
     return VLC_SUCCESS;
 }
 
+/**
+ * @brief Journal and synchronous disc and writes
+ *
+ * @param p_ml media library object
+ * @param b_sync boolean
+ * @return <= 0 on error.
+ */
+static int SetSynchronous( media_library_t *p_ml, bool b_sync )
+{
+    int i_rows, i_cols;
+    char **pp_results;
+    int i_return;
+    if ( b_sync )
+        i_return = Query( p_ml, &pp_results, &i_rows, &i_cols,
+            "PRAGMA synchronous = ON;PRAGMA journal_mode = TRUNCATE" );
+    else
+        i_return = Query( p_ml, &pp_results, &i_rows, &i_cols,
+            "PRAGMA synchronous = OFF;PRAGMA journal_mode = MEMORY" );
+    if( i_return != VLC_SUCCESS )
+        i_return = -1;
+    else
+        i_return = atoi( pp_results[ 1 ] );
+
+    FreeSQLResult( p_ml, pp_results );
+
+    return i_return;
+}
 
 /**
  * @brief Initiates database (create the database and the tables if needed)
@@ -1035,10 +1077,12 @@ int InitDatabase( media_library_t *p_ml )
     /* Select database name */
     char *psz_dbhost = NULL, *psz_user = NULL, *psz_pass = NULL;
     int i_port = 0;
+    bool b_sync = false;
     psz_dbhost = config_GetPsz( p_ml, "ml-filename" );
     psz_user = config_GetPsz( p_ml, "ml-username" );
     psz_pass = config_GetPsz( p_ml, "ml-password" );
     i_port = config_GetInt( p_ml, "ml-port" );
+    b_sync = config_GetInt( p_ml, "ml-synchronous" );
 
     /* Let's consider that a filename with a DIR_SEP is a full URL */
     if( strchr( psz_dbhost, DIR_SEP_CHAR ) == NULL )
@@ -1059,11 +1103,7 @@ int InitDatabase( media_library_t *p_ml )
     p_ml->p_sys->p_sql = sql_Create( p_ml, NULL, psz_dbhost, i_port, psz_user,
                                      psz_pass );
     if( !p_ml->p_sys->p_sql )
-    {
-        vlc_mutex_destroy( &p_ml->p_sys->lock );
-        free( p_ml->p_sys );
         return VLC_EGENERIC;
-    }
 
     /* Let's check if tables exist */
     int i_version = GetDatabaseVersion( p_ml );
@@ -1080,6 +1120,8 @@ int InitDatabase( media_library_t *p_ml )
 #if ML_DBVERSION != 1
 #error "ML versioning code needs to be updated. Is this done correctly?"
 #endif
+
+    SetSynchronous( p_ml, b_sync );
 
     msg_Dbg( p_ml, "ML initialized" );
     return VLC_SUCCESS;
@@ -1209,7 +1251,7 @@ void CopyInputItemToMedia( ml_media_t *p_media, input_item_t *p_item )
     p_media->psz_title      = input_item_GetTitle       ( p_item );
     p_media->psz_uri        = input_item_GetURL         ( p_item );
     if( !p_media->psz_uri )
-        p_media->psz_uri    = strdup( p_item->psz_uri );
+        p_media->psz_uri = input_item_GetURI( p_item );
     p_media->psz_album      = input_item_GetAlbum       ( p_item );
     p_media->psz_cover      = input_item_GetArtURL      ( p_item );
     p_media->psz_genre      = input_item_GetGenre       ( p_item );
@@ -1309,7 +1351,7 @@ void CopyMediaToInputItem( input_item_t *p_item, ml_media_t *p_media )
     ml_LockMedia( p_media );
     if( p_media->psz_title && *p_media->psz_title )
         input_item_SetTitle( p_item, p_media->psz_title );
-    if( p_media->psz_uri && *p_media->psz_uri )
+    if( p_media->psz_uri && *p_media->psz_uri && !strncmp( p_media->psz_uri, "http", 4 ) )
         input_item_SetURL( p_item, p_media->psz_uri );
     if( p_media->psz_album && *p_media->psz_album )
         input_item_SetAlbum( p_item, p_media->psz_album );

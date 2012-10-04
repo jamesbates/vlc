@@ -35,10 +35,6 @@
 /*****************************************************************************
  * Required vlc headers
  *****************************************************************************/
-#if defined( _MSC_VER )
-#   pragma warning( disable : 4244 )
-#endif
-
 #include "vlc_config.h"
 
 /*****************************************************************************
@@ -140,7 +136,7 @@
 /*****************************************************************************
  * Basic types definitions
  *****************************************************************************/
-#if defined( WIN32 ) || defined( UNDER_CE )
+#if defined( WIN32 )
 #   include <malloc.h>
 #   ifndef PATH_MAX
 #       define PATH_MAX MAX_PATH
@@ -150,9 +146,6 @@
 #ifdef __SYMBIAN32__
  #include <sys/syslimits.h>
 #endif
-
-/* Audio volume */
-typedef uint16_t            audio_volume_t;
 
 /**
  * High precision date or time interval
@@ -273,7 +266,6 @@ typedef struct audio_output audio_output_t;
 typedef struct aout_sys_t aout_sys_t;
 typedef struct aout_fifo_t aout_fifo_t;
 typedef struct aout_input_t aout_input_t;
-typedef struct block_t aout_buffer_t;
 typedef audio_format_t audio_sample_format_t;
 
 /* Video */
@@ -430,7 +422,7 @@ typedef int ( * vlc_callback_t ) ( vlc_object_t *,      /* variable's object */
 /*****************************************************************************
  * OS-specific headers and thread types
  *****************************************************************************/
-#if defined( WIN32 ) || defined( UNDER_CE )
+#if defined( WIN32 )
 # include <windows.h>
 #endif
 
@@ -443,15 +435,6 @@ typedef int ( * vlc_callback_t ) ( vlc_object_t *,      /* variable's object */
 
 #include "vlc_mtime.h"
 #include "vlc_threads.h"
-
-/**
- * Memory storage space for an atom. Never access it directly.
- */
-typedef union
-{
-    volatile uintptr_t u;
-    volatile intptr_t  s;
-} vlc_atomic_t;
 
 /*****************************************************************************
  * Common structure members
@@ -496,26 +479,6 @@ typedef union
 #else
 # define VLC_OBJECT( x ) ((vlc_object_t *)(x))
 #endif
-
-typedef struct gc_object_t
-{
-    vlc_atomic_t    refs;
-    void          (*pf_destructor) (struct gc_object_t *);
-} gc_object_t;
-
-/**
- * These members are common to all objects that wish to be garbage-collected.
- */
-#define VLC_GC_MEMBERS gc_object_t vlc_gc_data;
-
-VLC_API void * vlc_gc_init(gc_object_t *, void (*)(gc_object_t *));
-VLC_API void * vlc_hold(gc_object_t *);
-VLC_API void vlc_release(gc_object_t *);
-
-#define vlc_gc_init( a,b ) vlc_gc_init( &(a)->vlc_gc_data, (b) )
-#define vlc_gc_incref( a ) vlc_hold( &(a)->vlc_gc_data )
-#define vlc_gc_decref( a ) vlc_release( &(a)->vlc_gc_data )
-#define vlc_priv( gc, t ) ((t *)(((char *)(gc)) - offsetof(t, vlc_gc_data)))
 
 /*****************************************************************************
  * Macros and inline functions
@@ -816,16 +779,7 @@ static inline void SetQWLE (void *p, uint64_t qw)
 
 /* Stuff defined in src/extras/libc.c */
 
-#if defined(WIN32) || defined(UNDER_CE)
-/* win32, cl and icl support */
-#   if defined( _MSC_VER ) || !defined( __MINGW32__ )
-#       define __attribute__(x)
-#       define S_IFBLK         0x3000  /* Block */
-#       define S_ISBLK(m)      (0)
-#       define S_ISCHR(m)      (0)
-#       define S_ISFIFO(m)     (((m)&_S_IFMT) == _S_IFIFO)
-#       define S_ISREG(m)      (((m)&_S_IFMT) == _S_IFREG)
-#   endif
+#if defined(WIN32)
 
 /* several type definitions */
 #   if defined( __MINGW32__ )
@@ -841,27 +795,8 @@ static inline void SetQWLE (void *p, uint64_t qw)
 #       endif
 #   endif
 
-#   if defined( _MSC_VER )
-#       if !defined( _OFF_T_DEFINED )
-            typedef __int64 off_t;
-#           define _OFF_T_DEFINED
-#       else
-            /* for wx compatibility typedef long off_t; */
-#           define off_t __int64
-#       endif
-#   endif
-
-#   if defined( __BORLANDC__ )
-#       undef off_t
-#       define off_t unsigned __int64
-#   endif
-
 #   ifndef O_NONBLOCK
 #       define O_NONBLOCK 0
-#   endif
-
-#   ifndef alloca
-#       define alloca _alloca
 #   endif
 
 #   include <tchar.h>
@@ -910,10 +845,6 @@ static inline void *vlc_memalign(size_t align, size_t size)
 #endif
 
 VLC_API void vlc_tdestroy( void *, void (*)(void *) );
-
-/* Fast large memory copy and memory set */
-VLC_API void * vlc_memcpy( void *, const void *, size_t );
-#define vlc_memset memset
 
 /*****************************************************************************
  * I18n stuff
@@ -974,7 +905,7 @@ VLC_API const char * VLC_Compiler( void ) VLC_USED;
 #include "vlc_main.h"
 #include "vlc_configuration.h"
 
-#if defined( WIN32 ) || defined( UNDER_CE ) || defined( __SYMBIAN32__ ) || defined( __OS2__ )
+#if defined( WIN32 ) || defined( __SYMBIAN32__ ) || defined( __OS2__ )
 #   define DIR_SEP_CHAR '\\'
 #   define DIR_SEP "\\"
 #   define PATH_SEP_CHAR ';'

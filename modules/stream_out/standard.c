@@ -157,7 +157,7 @@ static void create_SDP(sout_stream_t *p_stream, sout_access_out_t *p_access)
         .ai_family = AF_UNSPEC,
         .ai_socktype = SOCK_DGRAM,
         .ai_protocol = 0,
-        .ai_flags = AI_NUMERICHOST | AI_NUMERICSERV
+        .ai_flags = AI_NUMERICHOST | AI_NUMERICSERV | AI_IDN,
     };
     char *shost = var_GetNonEmptyString (p_access, "src-addr");
     char *dhost = var_GetNonEmptyString (p_access, "dst-addr");
@@ -167,13 +167,13 @@ static void create_SDP(sout_stream_t *p_stream, sout_access_out_t *p_access)
     socklen_t srclen = 0, dstlen = 0;
     struct addrinfo *res;
 
-    if (!vlc_getaddrinfo ( VLC_OBJECT(p_stream), dhost, dport, &hints, &res))
+    if (!vlc_getaddrinfo (dhost, dport, &hints, &res))
     {
         memcpy (&dst, res->ai_addr, dstlen = res->ai_addrlen);
         freeaddrinfo (res);
     }
 
-    if (!vlc_getaddrinfo ( VLC_OBJECT(p_stream), shost, sport, &hints, &res))
+    if (!vlc_getaddrinfo (shost, sport, &hints, &res))
     {
         memcpy (&src, res->ai_addr, srclen = res->ai_addrlen);
         freeaddrinfo (res);

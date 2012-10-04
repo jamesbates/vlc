@@ -78,18 +78,18 @@ static int SubMarginCallback( vlc_object_t *, char const *,
 static const struct
 {
     double f_value;
-    const char *psz_label;
+    char psz_label[13];
 } p_zoom_values[] = {
     { 0.25, N_("1:4 Quarter") },
     { 0.5, N_("1:2 Half") },
     { 1, N_("1:1 Original") },
     { 2, N_("2:1 Double") },
-    { 0, NULL } };
+};
 
 static const struct
 {
-    const char *psz_value;
-    const char *psz_label;
+    char psz_value[8];
+    char psz_label[8];
 } p_crop_values[] = {
     { "", N_("Default") },
     { "16:10", "16:10" },
@@ -102,12 +102,12 @@ static const struct
     { "4:3", "4:3" },
     { "5:4", "5:4" },
     { "1:1", "1:1" },
-    { NULL, NULL } };
+};
 
 static const struct
 {
-    const char *psz_value;
-    const char *psz_label;
+    char psz_value[8];
+    char psz_label[8];
 } p_aspect_ratio_values[] = {
     { "", N_("Default") },
     { "1:1", "1:1" },
@@ -118,7 +118,7 @@ static const struct
     { "235:100", "2.35:1" },
     { "239:100", "2.39:1" },
     { "5:4", "5:4" },
-    { NULL, NULL } };
+};
 
 static void AddCustomRatios( vout_thread_t *p_vout, const char *psz_var,
                              char *psz_list )
@@ -147,19 +147,10 @@ void vout_IntfInit( vout_thread_t *p_vout )
 {
     vlc_value_t val, text, old_val;
     char *psz_buf;
-    int i;
 
     /* Create a few object variables we'll need later on */
-    var_Create( p_vout, "snapshot-path", VLC_VAR_STRING | VLC_VAR_DOINHERIT );
-    var_Create( p_vout, "snapshot-prefix", VLC_VAR_STRING | VLC_VAR_DOINHERIT );
-    var_Create( p_vout, "snapshot-format", VLC_VAR_STRING | VLC_VAR_DOINHERIT );
-    var_Create( p_vout, "snapshot-preview", VLC_VAR_BOOL | VLC_VAR_DOINHERIT );
-    var_Create( p_vout, "snapshot-sequential",
-                VLC_VAR_BOOL | VLC_VAR_DOINHERIT );
     var_Create( p_vout, "snapshot-num", VLC_VAR_INTEGER );
     var_SetInteger( p_vout, "snapshot-num", 1 );
-    var_Create( p_vout, "snapshot-width", VLC_VAR_INTEGER | VLC_VAR_DOINHERIT );
-    var_Create( p_vout, "snapshot-height", VLC_VAR_INTEGER | VLC_VAR_DOINHERIT );
 
     var_Create( p_vout, "width", VLC_VAR_INTEGER | VLC_VAR_DOINHERIT );
     var_Create( p_vout, "height", VLC_VAR_INTEGER | VLC_VAR_DOINHERIT );
@@ -184,7 +175,7 @@ void vout_IntfInit( vout_thread_t *p_vout )
 
     var_Get( p_vout, "zoom", &old_val );
 
-    for( i = 0; p_zoom_values[i].f_value; i++ )
+    for( size_t i = 0; i < ARRAY_SIZE(p_zoom_values); i++ )
     {
         if( old_val.f_float == p_zoom_values[i].f_value )
             var_Change( p_vout, "zoom", VLC_VAR_DELCHOICE, &old_val, NULL );
@@ -218,7 +209,7 @@ void vout_IntfInit( vout_thread_t *p_vout )
     val.psz_string = (char*)"";
     var_Change( p_vout, "crop", VLC_VAR_DELCHOICE, &val, 0 );
 
-    for( i = 0; p_crop_values[i].psz_value; i++ )
+    for( size_t i = 0; i < ARRAY_SIZE(p_crop_values); i++ )
     {
         val.psz_string = (char*)p_crop_values[i].psz_value;
         text.psz_string = _( p_crop_values[i].psz_label );
@@ -252,7 +243,7 @@ void vout_IntfInit( vout_thread_t *p_vout )
     val.psz_string = (char*)"";
     var_Change( p_vout, "aspect-ratio", VLC_VAR_DELCHOICE, &val, 0 );
 
-    for( i = 0; p_aspect_ratio_values[i].psz_value; i++ )
+    for( size_t i = 0; i < ARRAY_SIZE(p_aspect_ratio_values); i++ )
     {
         val.psz_string = (char*)p_aspect_ratio_values[i].psz_value;
         text.psz_string = _( p_aspect_ratio_values[i].psz_label );
@@ -379,7 +370,7 @@ static void VoutOsdSnapshot( vout_thread_t *p_vout, picture_t *p_pic, const char
     msg_Dbg( p_vout, "snapshot taken (%s)", psz_filename );
     vout_OSDMessage( p_vout, SPU_DEFAULT_CHANNEL, "%s", psz_filename );
 
-    if( var_GetBool( p_vout, "snapshot-preview" ) )
+    if( var_InheritBool( p_vout, "snapshot-preview" ) )
     {
         if( VoutSnapshotPip( p_vout, p_pic ) )
             msg_Warn( p_vout, "Failed to display snapshot" );
@@ -391,9 +382,9 @@ static void VoutOsdSnapshot( vout_thread_t *p_vout, picture_t *p_pic, const char
  */
 static void VoutSaveSnapshot( vout_thread_t *p_vout )
 {
-    char *psz_path = var_GetNonEmptyString( p_vout, "snapshot-path" );
-    char *psz_format = var_GetNonEmptyString( p_vout, "snapshot-format" );
-    char *psz_prefix = var_GetNonEmptyString( p_vout, "snapshot-prefix" );
+    char *psz_path = var_InheritString( p_vout, "snapshot-path" );
+    char *psz_format = var_InheritString( p_vout, "snapshot-format" );
+    char *psz_prefix = var_InheritString( p_vout, "snapshot-prefix" );
 
     /* */
     picture_t *p_picture;
@@ -421,7 +412,7 @@ static void VoutSaveSnapshot( vout_thread_t *p_vout )
 
     vout_snapshot_save_cfg_t cfg;
     memset( &cfg, 0, sizeof(cfg) );
-    cfg.is_sequential = var_GetBool( p_vout, "snapshot-sequential" );
+    cfg.is_sequential = var_InheritBool( p_vout, "snapshot-sequential" );
     cfg.sequence = var_GetInteger( p_vout, "snapshot-num" );
     cfg.path = psz_path;
     cfg.format = psz_format;

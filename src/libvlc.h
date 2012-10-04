@@ -41,8 +41,10 @@ size_t vlc_towc (const char *str, uint32_t *restrict pwc);
  */
 void system_Init      ( void );
 void system_Configure ( libvlc_int_t *, int, const char *const [] );
-void system_End       ( void );
-
+#ifdef WIN32
+void system_End(void);
+size_t EnumClockSource( vlc_object_t *, char ***, char *** );
+#endif
 void vlc_CPU_init(void);
 void vlc_CPU_dump(vlc_object_t *);
 
@@ -54,6 +56,8 @@ void vlc_CPU_dump(vlc_object_t *);
 int vlc_clone_detach (vlc_thread_t *, void *(*)(void *), void *, int);
 
 int vlc_object_waitpipe (vlc_object_t *obj);
+void vlc_object_kill (vlc_object_t *) VLC_DEPRECATED;
+#define vlc_object_kill(o) vlc_object_kill(VLC_OBJECT(o))
 
 int vlc_set_priority( vlc_thread_t, int );
 
@@ -76,7 +80,6 @@ typedef struct vlc_exit
     vlc_mutex_t lock;
     void (*handler) (void *);
     void *opaque;
-    bool killed;
 } vlc_exit_t;
 
 void vlc_ExitInit( vlc_exit_t * );
@@ -175,7 +178,6 @@ typedef struct libvlc_priv_t
     bool               b_stats;     ///< Whether to collect stats
 
     /* Singleton objects */
-    module_t          *p_memcpy_module;  ///< Fast memcpy plugin used
     playlist_t        *p_playlist; ///< the playlist singleton
     struct media_library_t *p_ml;    ///< the ML singleton
     vlc_mutex_t       ml_lock; ///< Mutex for ML creation

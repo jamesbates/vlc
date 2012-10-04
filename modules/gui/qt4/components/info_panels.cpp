@@ -169,6 +169,7 @@ MetaPanel::MetaPanel( QWidget *parent,
     CONNECT( seqtot_text, textEdited( QString ), this, enterEditMode() );
 
     CONNECT( date_text, textEdited( QString ), this, enterEditMode() );
+    CONNECT( THEMIM->getIM(), artChanged( QString ), this, enterEditMode() );
 /*    CONNECT( rating_text, valueChanged( QString ), this, enterEditMode( QString ) );*/
 
     /* We are not yet in Edit Mode */
@@ -231,6 +232,7 @@ void MetaPanel::update( input_item_t *p_item )
 
     UPDATE_META( Date, date_text );
     UPDATE_META( TrackNum, seqnum_text );
+    UPDATE_META( TrackTotal, seqtot_text );
 //    UPDATE_META( Setting, setting_text );
 //    UPDATE_META_INT( Rating, rating_text );
 
@@ -263,6 +265,7 @@ void MetaPanel::update( input_item_t *p_item )
     }
 
     art_cover->showArtUpdate( file );
+    art_cover->setItem( p_item );
 }
 
 /**
@@ -279,6 +282,7 @@ void MetaPanel::saveMeta()
     input_item_SetAlbum(  p_input, qtu( collection_text->text() ) );
     input_item_SetGenre(  p_input, qtu( genre_text->text() ) );
     input_item_SetTrackNum(  p_input, qtu( seqnum_text->text() ) );
+    input_item_SetTrackTotal(  p_input, qtu( seqtot_text->text() ) );
     input_item_SetDate(  p_input, qtu( date_text->text() ) );
 
     input_item_SetCopyright( p_input, qtu( copyright_text->text() ) );
@@ -321,11 +325,13 @@ void MetaPanel::clear()
     copyright_text->clear();
     collection_text->clear();
     seqnum_text->clear();
+    seqtot_text->clear();
     description_text->clear();
     date_text->clear();
     language_text->clear();
     nowplaying_text->clear();
     publisher_text->clear();
+    encodedby_text->clear();
 
     setEditMode( false );
     emit uriSet( "" );
@@ -334,9 +340,7 @@ void MetaPanel::clear()
 /**
  * Second Panel - Shows the extra metadata in a tree, non editable.
  **/
-ExtraMetaPanel::ExtraMetaPanel( QWidget *parent,
-                                intf_thread_t *_p_intf )
-                                : QWidget( parent ), p_intf( _p_intf )
+ExtraMetaPanel::ExtraMetaPanel( QWidget *parent ) : QWidget( parent )
 {
      QGridLayout *layout = new QGridLayout(this);
 
@@ -406,9 +410,7 @@ void ExtraMetaPanel::clear()
  * Third panel - Stream info
  * Display all codecs and muxers info that we could gather.
  **/
-InfoPanel::InfoPanel( QWidget *parent,
-                      intf_thread_t *_p_intf )
-                      : QWidget( parent ), p_intf( _p_intf )
+InfoPanel::InfoPanel( QWidget *parent ) : QWidget( parent )
 {
      QGridLayout *layout = new QGridLayout(this);
 
@@ -483,9 +485,7 @@ void InfoPanel::saveCodecsInfo()
  * Fourth Panel - Stats
  * Displays the Statistics for reading/streaming/encoding/displaying in a tree
  */
-InputStatsPanel::InputStatsPanel( QWidget *parent,
-                                  intf_thread_t *_p_intf )
-                                  : QWidget( parent ), p_intf( _p_intf )
+InputStatsPanel::InputStatsPanel( QWidget *parent ): QWidget( parent )
 {
      QGridLayout *layout = new QGridLayout(this);
 

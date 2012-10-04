@@ -37,7 +37,7 @@
 #include <QPixmapCache>
 #include <QSize>
 #include <QAbstractItemModel>
-
+class QAction;
 
 class VLCModel : public QAbstractItemModel
 {
@@ -50,14 +50,40 @@ public:
     };
 
     VLCModel( intf_thread_t *_p_intf, QObject *parent = 0 );
+    /*** QAbstractItemModel subclassing ***/
+    virtual int columnCount( const QModelIndex &parent = QModelIndex() ) const;
+
     virtual int itemId( const QModelIndex & ) const = 0;
+    virtual input_item_t *getInputItem( const QModelIndex & ) const = 0;
     virtual QModelIndex currentIndex() const = 0;
-    virtual bool popup( const QModelIndex & index,
-            const QPoint &point, const QModelIndexList &list ) = 0;
     virtual void doDelete( QModelIndexList ) = 0;
     virtual ~VLCModel();
     static QString getMeta( const QModelIndex & index, int meta );
     static QPixmap getArtPixmap( const QModelIndex & index, const QSize & size );
+    static QString getArtUrl( const QModelIndex & index );
+    virtual QString getURI( const QModelIndex &index ) const = 0;
+    virtual QModelIndex rootIndex() const = 0;
+    virtual bool isTree() const = 0;
+    virtual bool canEdit() const = 0;
+    enum playLocation
+    {
+        IN_PLAYLIST,
+        IN_MEDIALIBRARY
+    };
+    virtual bool isCurrentItem( const QModelIndex &index, playLocation where ) const = 0;
+
+    struct actionsContainerType
+    {
+        enum
+        {
+            ACTION_PLAY = 1,
+            ACTION_ADDTOPLAYLIST,
+            ACTION_REMOVE,
+            ACTION_SORT
+        } action;
+        QModelIndexList indexes; /* for passing selection or caller index(es) */
+        int column; /* for sorting */
+    };
 
     static int columnToMeta( int _column )
     {
@@ -85,13 +111,16 @@ public:
         return column;
     }
 
+    virtual void createNode( QModelIndex, QString ) {};
+
 public slots:
     virtual void activateItem( const QModelIndex &index ) = 0;
+    virtual void actionSlot( QAction *action ) = 0;
 
 protected:
     intf_thread_t *p_intf;
-
 };
 
+Q_DECLARE_METATYPE(VLCModel::actionsContainerType)
 
 #endif

@@ -50,6 +50,7 @@
 #include <QTimer>
 #include <QSlider>
 #include <QBitmap>
+#include <QUrl>
 
 #ifdef Q_WS_X11
 #   include <X11/Xlib.h>
@@ -120,12 +121,14 @@ WId VideoWidget::request( int *pi_x, int *pi_y,
     plt.setColor( QPalette::Window, Qt::black );
     stable->setPalette( plt );
     stable->setAutoFillBackground(true);
+    /* Force the widget to be native so that it gets a winId() */
+    stable->setAttribute( Qt::WA_NativeWindow, true );
     /* Indicates that the widget wants to draw directly onto the screen.
        Widgets with this attribute set do not participate in composition
        management */
     /* This is currently disabled on X11 as it does not seem to improve
      * performance, but causes the video widget to be transparent... */
-#ifndef Q_WS_X11
+#if !defined (Q_WS_X11) && !defined (Q_WS_QPA)
     stable->setAttribute( Qt::WA_PaintOnScreen, true );
 #endif
 
@@ -196,6 +199,16 @@ BackgroundWidget::BackgroundWidget( intf_thread_t *_p_i )
     /* Init the cone art */
     updateArt( "" );
 
+    /* fade in animator */
+    setProperty( "opacity", 1.0 );
+    fadeAnimation = new QPropertyAnimation( this, "opacity", this );
+    fadeAnimation->setDuration( 1000 );
+    fadeAnimation->setStartValue( 0.0 );
+    fadeAnimation->setEndValue( 1.0 );
+    fadeAnimation->setEasingCurve( QEasingCurve::OutSine );
+    CONNECT( fadeAnimation, valueChanged( const QVariant & ),
+             this, update() );
+
     CONNECT( THEMIM->getIM(), artChanged( QString ),
              this, updateArt( const QString& ) );
 }
@@ -216,6 +229,12 @@ void BackgroundWidget::updateArt( const QString& url )
     update();
 }
 
+void BackgroundWidget::showEvent( QShowEvent * e )
+{
+    Q_UNUSED( e );
+    if ( b_withart ) fadeAnimation->start();
+}
+
 void BackgroundWidget::paintEvent( QPaintEvent *e )
 {
     if ( !b_withart )
@@ -233,6 +252,8 @@ void BackgroundWidget::paintEvent( QPaintEvent *e )
 
     i_maxwidth  = __MIN( maximumWidth(), width() ) - MARGIN * 2;
     i_maxheight = __MIN( maximumHeight(), height() ) - MARGIN * 2;
+
+    painter.setOpacity( property( "opacity" ).toFloat() );
 
     if ( height() > MARGIN * 2 )
     {
@@ -503,23 +524,30 @@ void SpeedControlWidget::resetRate()
 }
 
 CoverArtLabel::CoverArtLabel( QWidget *parent, intf_thread_t *_p_i )
-              : QLabel( parent ), p_intf( _p_i )
+    : QLabel( parent ), p_intf( _p_i ), p_item( NULL )
 {
     setContextMenuPolicy( Qt::ActionsContextMenu );
-    CONNECT( this, updateRequested(), this, askForUpdate() );
+    CONNECT( THEMIM->getIM(), artChanged( input_item_t * ),
+             this, showArtUpdate( input_item_t * ) );
 
     setMinimumHeight( 128 );
     setMinimumWidth( 128 );
-    setMaximumHeight( 128 );
     setScaledContents( false );
     setAlignment( Qt::AlignCenter );
 
-    QList< QAction* > artActions = actions();
     QAction *action = new QAction( qtr( "Download cover art" ), this );
     CONNECT( action, triggered(), this, askForUpdate() );
     addAction( action );
 
-    showArtUpdate( "" );
+    action = new QAction( qtr( "Add cover art from file" ), this );
+    CONNECT( action, triggered(), this, setArtFromFile() );
+    addAction( action );
+
+    p_item = THEMIM->currentInputItem();
+    if( p_item )
+        showArtUpdate( p_item );
+    else
+        showArtUpdate( "" );
 }
 
 CoverArtLabel::~CoverArtLabel()
@@ -527,6 +555,14 @@ CoverArtLabel::~CoverArtLabel()
     QList< QAction* > artActions = actions();
     foreach( QAction *act, artActions )
         removeAction( act );
+    if ( p_item ) vlc_gc_decref( p_item );
+}
+
+void CoverArtLabel::setItem( input_item_t *_p_item )
+{
+    if ( p_item ) vlc_gc_decref( p_item );
+    p_item = _p_item;
+    if ( p_item ) vlc_gc_incref( p_item );
 }
 
 void CoverArtLabel::showArtUpdate( const QString& url )
@@ -534,7 +570,7 @@ void CoverArtLabel::showArtUpdate( const QString& url )
     QPixmap pix;
     if( !url.isEmpty() && pix.load( url ) )
     {
-        pix = pix.scaled( minimumWidth(), maximumHeight(),
+        pix = pix.scaled( minimumWidth(), minimumHeight(),
                           Qt::KeepAspectRatioByExpanding,
                           Qt::SmoothTransformation );
     }
@@ -545,9 +581,36 @@ void CoverArtLabel::showArtUpdate( const QString& url )
     setPixmap( pix );
 }
 
+void CoverArtLabel::showArtUpdate( input_item_t *_p_item )
+{
+    /* not for me */
+    if ( _p_item != p_item )
+        return;
+
+    QString url;
+    if ( _p_item ) url = THEMIM->getIM()->decodeArtURL( _p_item );
+    showArtUpdate( url );
+}
+
 void CoverArtLabel::askForUpdate()
 {
-    THEMIM->getIM()->requestArtUpdate();
+    THEMIM->getIM()->requestArtUpdate( p_item );
+}
+
+void CoverArtLabel::setArtFromFile()
+{
+    if( !p_item )
+        return;
+
+    QString filePath = QFileDialog::getOpenFileName( this, qtr( "Choose Cover Art" ),
+        p_intf->p_sys->filepath, qtr( "Image Files (*.gif *.jpg *.jpeg *.png)" ) );
+
+    if( filePath.isEmpty() )
+        return;
+
+    QString fileUrl = QUrl::fromLocalFile( filePath ).toString();
+
+    THEMIM->getIM()->setArt( p_item, fileUrl );
 }
 
 TimeLabel::TimeLabel( intf_thread_t *_p_intf, TimeLabel::Display _displayType  )

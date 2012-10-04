@@ -3,7 +3,7 @@ set -e
 
 PLATFORM=OS
 VERBOSE=no
-SDK_VERSION=5.0
+SDK_VERSION=5.1
 SDK_MIN=5.0
 
 usage()
@@ -77,7 +77,6 @@ if [ "$PLATFORM" = "Simulator" ]; then
 else
     TARGET="arm-apple-darwin11"
     ARCH="armv7"
-    OPTIM="-mno-thumb"
 fi
 
 info "Using ${ARCH} with SDK version ${SDK_VERSION}"
@@ -165,9 +164,9 @@ mkdir -p "${VLCROOT}/contrib/iPhone${PLATFORM}"
 cd "${VLCROOT}/contrib/iPhone${PLATFORM}"
 
 if [ "$PLATFORM" = "OS" ]; then
-  export AS="${IOS_GAS_PREPROCESSOR} ${CC}"
-  export ASCPP="${IOS_GAS_PREPROCESSOR} ${CC}"
-  export CCAS="${IOS_GAS_PREPROCESSOR} ${CC}"
+      export AS="${IOS_GAS_PREPROCESSOR} ${CC}"
+      export ASCPP="${IOS_GAS_PREPROCESSOR} ${CC}"
+      export CCAS="${IOS_GAS_PREPROCESSOR} ${CC}"
 else
   export AS="xcrun as"
   export ASCPP="xcrun as"
@@ -176,9 +175,11 @@ fi
 ../bootstrap --host=${TARGET} --build="i686-apple-darwin10" --disable-disc --disable-sout \
     --enable-small \
     --disable-sdl \
+    --disable-SDL_image \
     --disable-fontconfig \
     --disable-ass \
     --disable-freetype2 \
+    --enable-iconv \
     --disable-fribidi \
     --disable-zvbi \
     --disable-kate \
@@ -197,7 +198,7 @@ fi
     --disable-orc \
     --disable-schroedinger \
     --disable-libmpeg2 \
-    --disable-mad > ${out}
+    --enable-mad > ${out}
 make
 spopd
 
@@ -251,18 +252,18 @@ ${VLCROOT}/configure \
     --disable-shared \
     --disable-macosx-quartztext \
     --enable-avcodec \
-    --disable-mkv \
+    --enable-mkv \
     --enable-dvbpsi \
     --enable-swscale \
     --disable-projectm \
     --disable-sout \
     --disable-faad \
     --disable-lua \
-    --disable-mad \
+    --enable-mad \
     --disable-a52 \
     --disable-fribidi \
     --disable-macosx-audio \
-    --disable-qt4 --disable-skins2 \
+    --disable-qt --disable-skins2 \
     --disable-libgcrypt \
     --disable-vcd \
     --disable-vlc \
@@ -270,10 +271,10 @@ ${VLCROOT}/configure \
     --disable-httpd \
     --disable-nls \
     --disable-glx \
-    --enable-visual \
+    --disable-visual \
     --disable-lua \
     --disable-sse \
-    --disable-neon \
+    --enable-neon \
     --disable-notify \
     --enable-live555 \
     --enable-realrtsp \
@@ -298,12 +299,12 @@ ${VLCROOT}/configure \
     --disable-sout \
     --disable-faad \
     --disable-lua \
-    --disable-mad \
     --disable-mtp \
     --disable-ogg \
     --disable-speex \
     --disable-theora \
     --disable-flac \
+    --disable-freetype \
     --disable-mmx > ${out} # MMX and SSE support requires llvm which is broken on Simulator
 fi
 

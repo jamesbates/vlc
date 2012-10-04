@@ -174,7 +174,7 @@ public:
     virtual ~DiscOpenPanel();
     virtual void clear() ;
     virtual void accept() ;
-#ifdef WIN32
+#if defined( WIN32 ) || defined( __OS2__ )
     virtual void onFocus();
 #endif
 private:
@@ -208,9 +208,9 @@ private:
     StringListConfigControl *vdevDshowW, *adevDshowW;
     QLineEdit *dshowVSizeLine;
 #else
-    QSpinBox  *pvrFreq, *pvrBitr;
+    QSpinBox  *pvrFreq;
     QComboBox *v4l2VideoDevice, *v4l2AudioDevice;
-    QLineEdit *pvrDevice, *pvrRadioDevice;
+    QComboBox *pvrDevice, *pvrAudioDevice;
     QComboBox *v4l2StdBox, *pvrNormBox;
     QSpinBox *jackChannels;
     QCheckBox *jackPace, *jackConnect;

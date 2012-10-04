@@ -97,7 +97,10 @@ static void Close( vlc_object_t * );
 #define REFERER_LONGTEXT N_("Customize the HTTP referer, simulating a previous document")
 
 #define UA_TEXT N_("User Agent")
-#define UA_LONGTEXT N_("You can use a custom User agent or use a known one")
+#define UA_LONGTEXT N_("The name and version of the program will be " \
+    "provided to the HTTP server. They must be separated by a forward " \
+    "slash, e.g. FooBar/1.2.3. This option can only be specified per input " \
+    "item, not globally.")
 
 vlc_module_begin ()
     set_description( N_("HTTP input") )
@@ -136,7 +139,8 @@ struct access_sys_t
 {
     int fd;
     bool b_error;
-    vlc_tls_t  *p_tls;
+    vlc_tls_creds_t *p_creds;
+    vlc_tls_t *p_tls;
     v_socket_t *p_vs;
 
     /* From uri */
@@ -161,7 +165,6 @@ struct access_sys_t
     char       *psz_location;
     bool b_mms;
     bool b_icecast;
-    bool b_ssl;
 #ifdef HAVE_ZLIB_H
     bool b_compressed;
     struct
@@ -275,7 +278,6 @@ static int OpenWithCookies( vlc_object_t *p_this, const char *psz_access,
     p_sys->psz_user_agent = NULL;
     p_sys->psz_referrer = NULL;
     p_sys->b_pace_control = true;
-    p_sys->b_ssl = false;
 #ifdef HAVE_ZLIB_H
     p_sys->b_compressed = false;
     /* 15 is the max windowBits, +32 to enable optional gzip decoding */
@@ -337,7 +339,9 @@ static int OpenWithCookies( vlc_object_t *p_this, const char *psz_access,
     if( !strncmp( psz_access, "https", 5 ) )
     {
         /* HTTP over SSL */
-        p_sys->b_ssl = true;
+        p_sys->p_creds = vlc_tls_ClientCreate( p_this );
+        if( p_sys->p_creds == NULL )
+            goto error;
         if( p_sys->url.i_port <= 0 )
             p_sys->url.i_port = 443;
     }
@@ -633,20 +637,19 @@ connect:
             goto error;
         }
 
-
-        /* Do not accept redirection outside of HTTP works */
         const char *psz_protocol;
-        if( !strncmp( p_sys->psz_location, "http:", 5 ) )
+        if( !strncmp( p_sys->psz_location, "http://", 7 ) )
             psz_protocol = "http";
-        else if( !strncmp( p_sys->psz_location, "https:", 6 ) )
+        else if( !strncmp( p_sys->psz_location, "https://", 8 ) )
             psz_protocol = "https";
         else
-        {
-            msg_Err( p_access, "insecure redirection ignored" );
+        {   /* Do not accept redirection outside of HTTP */
+            msg_Err( p_access, "unsupported redirection ignored" );
             goto error;
         }
         free( p_access->psz_location );
-        p_access->psz_location = strdup( p_sys->psz_location );
+        p_access->psz_location = strdup( p_sys->psz_location
+                                       + strlen( psz_protocol ) + 3 );
         /* Clean up current Open() run */
         vlc_UrlClean( &p_sys->url );
         http_auth_Reset( &p_sys->auth );
@@ -660,6 +663,7 @@ connect:
         free( p_sys->psz_referrer );
 
         Disconnect( p_access );
+        vlc_tls_Delete( p_sys->p_creds );
         cookies = p_sys->cookies;
 #ifdef HAVE_ZLIB_H
         inflateEnd( &p_sys->inflate.stream );
@@ -752,6 +756,7 @@ error:
     free( p_sys->psz_referrer );
 
     Disconnect( p_access );
+    vlc_tls_Delete( p_sys->p_creds );
 
     if( p_sys->cookies )
     {
@@ -793,6 +798,7 @@ static void Close( vlc_object_t *p_this )
     free( p_sys->psz_referrer );
 
     Disconnect( p_access );
+    vlc_tls_Delete( p_sys->p_creds );
 
     if( p_sys->cookies )
     {
@@ -887,7 +893,7 @@ static ssize_t Read( access_t *p_access, uint8_t *p_buffer, size_t i_len )
     if( i_len == 0 )
         goto fatal;
 
-    if( p_sys->i_icy_meta > 0 && p_access->info.i_pos-p_sys->i_icy_offset > 0 )
+    if( p_sys->i_icy_meta > 0 && p_access->info.i_pos - p_sys->i_icy_offset > 0 )
     {
         int64_t i_next = p_sys->i_icy_meta -
                                     (p_access->info.i_pos - p_sys->i_icy_offset ) % p_sys->i_icy_meta;
@@ -1216,7 +1222,7 @@ static int Connect( access_t *p_access, uint64_t i_tell )
     setsockopt (p_sys->fd, SOL_SOCKET, SO_KEEPALIVE, &(int){ 1 }, sizeof (int));
 
     /* Initialize TLS/SSL session */
-    if( p_sys->b_ssl )
+    if( p_sys->p_creds != NULL )
     {
         /* CONNECT to establish TLS tunnel through HTTP proxy */
         if( p_sys->b_proxy )
@@ -1280,8 +1286,8 @@ static int Connect( access_t *p_access, uint64_t i_tell )
         }
 
         /* TLS/SSL handshake */
-        p_sys->p_tls = vlc_tls_ClientCreate( VLC_OBJECT(p_access), p_sys->fd,
-                                             p_sys->url.psz_host );
+        p_sys->p_tls = vlc_tls_ClientSessionCreate( p_sys->p_creds, p_sys->fd,
+                                                p_sys->url.psz_host, "https" );
         if( p_sys->p_tls == NULL )
         {
             msg_Err( p_access, "cannot establish HTTP/TLS session" );
@@ -1307,12 +1313,14 @@ static int Request( access_t *p_access, uint64_t i_tell )
     const char *psz_path = p_sys->url.psz_path;
     if( !psz_path || !*psz_path )
         psz_path = "/";
-    net_Write( p_access, p_sys->fd, pvs, "GET ", 4 );
     if( p_sys->b_proxy && pvs == NULL )
-        net_Printf( p_access, p_sys->fd, NULL, "http://%s:%d",
-                    p_sys->url.psz_host, p_sys->url.i_port );
-    net_Printf( p_access, p_sys->fd, pvs, "%s HTTP/1.%d\r\n",
-                psz_path, p_sys->i_version );
+        net_Printf( p_access, p_sys->fd, NULL,
+                    "GET http://%s:%d%s HTTP/1.%d\r\n",
+                    p_sys->url.psz_host, p_sys->url.i_port,
+                    psz_path, p_sys->i_version );
+    else
+        net_Printf( p_access, p_sys->fd, pvs, "GET %s HTTP/1.%d\r\n",
+                    psz_path, p_sys->i_version );
     if( p_sys->url.i_port != (pvs ? 443 : 80) )
         net_Printf( p_access, p_sys->fd, pvs, "Host: %s:%d\r\n",
                     p_sys->url.psz_host, p_sys->url.i_port );
@@ -1320,16 +1328,17 @@ static int Request( access_t *p_access, uint64_t i_tell )
         net_Printf( p_access, p_sys->fd, pvs, "Host: %s\r\n",
                     p_sys->url.psz_host );
     /* User Agent */
-    net_Printf( p_access, p_sys->fd, pvs,
-                "User-Agent: %s\r\n",
+    net_Printf( p_access, p_sys->fd, pvs, "User-Agent: %s\r\n",
                 p_sys->psz_user_agent );
     /* Referrer */
     if (p_sys->psz_referrer)
     {
-        net_Printf( p_access, p_sys->fd, pvs,
-                    "Referer: %s\r\n",
+        net_Printf( p_access, p_sys->fd, pvs, "Referer: %s\r\n",
                     p_sys->psz_referrer);
     }
+#ifdef HAVE_ZLIB_H
+    net_Printf( p_access, p_sys->fd, pvs, "Accept-Encoding: gzip, deflate\r\n" );
+#endif
     /* Offset */
     if( p_sys->i_version == 1 && ! p_sys->b_continuous )
     {
@@ -1507,9 +1516,9 @@ static int Request( access_t *p_access, uint64_t i_tell )
              * handle it as everyone does. */
             if( p[0] == '/' )
             {
-                const char *psz_http_ext = p_sys->b_ssl ? "s" : "" ;
+                const char *psz_http_ext = p_sys->p_tls ? "s" : "" ;
 
-                if( p_sys->url.i_port == ( p_sys->b_ssl ? 443 : 80 ) )
+                if( p_sys->url.i_port == ( p_sys->p_tls ? 443 : 80 ) )
                 {
                     if( asprintf(&psz_new_loc, "http%s://%s%s", psz_http_ext,
                                  p_sys->url.psz_host, p) < 0 )
@@ -1689,7 +1698,7 @@ static void Disconnect( access_t *p_access )
 
     if( p_sys->p_tls != NULL)
     {
-        vlc_tls_ClientDelete( p_sys->p_tls );
+        vlc_tls_SessionDelete( p_sys->p_tls );
         p_sys->p_tls = NULL;
         p_sys->p_vs = NULL;
     }
@@ -1783,8 +1792,10 @@ static void cookie_append( vlc_array_t * cookies, char * cookie )
 
         assert( current_cookie_name );
 
-        bool is_domain_matching = ( cookie_domain && current_cookie_domain &&
-                                         !strcmp( cookie_domain, current_cookie_domain ) );
+        bool is_domain_matching = (
+                      ( !cookie_domain && !current_cookie_domain ) ||
+                      ( cookie_domain && current_cookie_domain &&
+                        !strcmp( cookie_domain, current_cookie_domain ) ) );
 
         if( is_domain_matching && !strcmp( cookie_name, current_cookie_name )  )
         {

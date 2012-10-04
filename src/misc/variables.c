@@ -390,7 +390,6 @@ void var_DestroyAll( vlc_object_t *obj )
 int var_Change( vlc_object_t *p_this, const char *psz_name,
                 int i_action, vlc_value_t *p_val, vlc_value_t *p_val2 )
 {
-    int i;
     int ret = VLC_SUCCESS;
     variable_t *p_var;
     vlc_value_t oldval;
@@ -460,7 +459,8 @@ int var_Change( vlc_object_t *p_this, const char *psz_name,
                 ret = VLC_EGENERIC;
             break;
         case VLC_VAR_ADDCHOICE:
-            i = p_var->choices.i_count;
+        {
+            int i = p_var->choices.i_count;
 
             INSERT_ELEM( p_var->choices.p_values, p_var->choices.i_count,
                          i, *p_val );
@@ -473,14 +473,14 @@ int var_Change( vlc_object_t *p_this, const char *psz_name,
 
             CheckValue( p_var, &p_var->val );
             break;
+        }
         case VLC_VAR_DELCHOICE:
+        {
+            int i;
+
             for( i = 0 ; i < p_var->choices.i_count ; i++ )
-            {
                 if( p_var->ops->pf_cmp( p_var->choices.p_values[i], *p_val ) == 0 )
-                {
                     break;
-                }
-            }
 
             if( i == p_var->choices.i_count )
             {
@@ -490,13 +490,9 @@ int var_Change( vlc_object_t *p_this, const char *psz_name,
             }
 
             if( p_var->i_default > i )
-            {
                 p_var->i_default--;
-            }
             else if( p_var->i_default == i )
-            {
                 p_var->i_default = -1;
-            }
 
             p_var->ops->pf_free( &p_var->choices.p_values[i] );
             free( p_var->choices_text.p_values[i].psz_string );
@@ -506,15 +502,14 @@ int var_Change( vlc_object_t *p_this, const char *psz_name,
 
             CheckValue( p_var, &p_var->val );
             break;
+        }
         case VLC_VAR_CHOICESCOUNT:
             p_val->i_int = p_var->choices.i_count;
             break;
         case VLC_VAR_CLEARCHOICES:
-            for( i = 0 ; i < p_var->choices.i_count ; i++ )
-            {
+            for( int i = 0 ; i < p_var->choices.i_count ; i++ )
                 p_var->ops->pf_free( &p_var->choices.p_values[i] );
-            }
-            for( i = 0 ; i < p_var->choices_text.i_count ; i++ )
+            for( int i = 0 ; i < p_var->choices_text.i_count ; i++ )
                 free( p_var->choices_text.p_values[i].psz_string );
 
             if( p_var->choices.i_count ) free( p_var->choices.p_values );
@@ -527,24 +522,21 @@ int var_Change( vlc_object_t *p_this, const char *psz_name,
             p_var->i_default = -1;
             break;
         case VLC_VAR_SETDEFAULT:
+        {
+            int i;
             /* FIXME: the list is sorted, dude. Use something cleverer. */
             for( i = 0 ; i < p_var->choices.i_count ; i++ )
-            {
                 if( p_var->ops->pf_cmp( p_var->choices.p_values[i], *p_val ) == 0 )
-                {
                     break;
-                }
-            }
 
             if( i == p_var->choices.i_count )
-            {
                 /* Not found */
                 break;
-            }
 
             p_var->i_default = i;
             CheckValue( p_var, &p_var->val );
             break;
+        }
         case VLC_VAR_SETVALUE:
             /* Duplicate data if needed */
             newval = *p_val;
@@ -578,7 +570,7 @@ int var_Change( vlc_object_t *p_this, const char *psz_name,
             }
             p_val->p_list->i_count = p_var->choices.i_count;
             if( p_val2 ) p_val2->p_list->i_count = p_var->choices.i_count;
-            for( i = 0 ; i < p_var->choices.i_count ; i++ )
+            for( int i = 0 ; i < p_var->choices.i_count ; i++ )
             {
                 p_val->p_list->p_values[i] = p_var->choices.p_values[i];
                 p_val->p_list->pi_types[i] = p_var->i_type;
@@ -1091,8 +1083,10 @@ cleanup:
 
 #undef var_LocationParse
 /**
- * Parses a set of colon-separated <variable name>=<value> pairs. Some access
- * (or access_demux) plugins uses this scheme in media resource location.
+ * Parses a set of colon-separated or semicolon-separated
+ * <variable name>=<value> pairs.
+ * Some access (or access_demux) plugins uses this scheme
+ * in media resource location.
  * @note Only trusted/safe variables are allowed. This is intended.
  *
  * @warning Only use this for plugins implementing VLC-specific resource
@@ -1112,9 +1106,9 @@ int var_LocationParse (vlc_object_t *obj, const char *mrl, const char *pref)
     assert(mrl != NULL);
     while (*mrl != '\0')
     {
-        mrl += strspn (mrl, ":"); /* skip leading colon(s) */
+        mrl += strspn (mrl, ":;"); /* skip leading colon(s) */
 
-        size_t len = strcspn (mrl, ":");
+        size_t len = strcspn (mrl, ":;");
         char *buf = malloc (preflen + len);
 
         if (likely(buf != NULL))

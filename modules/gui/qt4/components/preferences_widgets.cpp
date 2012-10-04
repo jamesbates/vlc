@@ -25,7 +25,6 @@
 
 /**
  * Todo:
- *  - i_action handler for IntegerLists, but I don't see any module using it...
  *  - Validator for modulelist
  */
 #ifdef HAVE_CONFIG_H
@@ -94,22 +93,19 @@ ConfigControl *ConfigControl::createControl( vlc_object_t *p_this,
         p_control = new ModuleListConfigControl( p_this, p_item, parent, true );
         break;
     case CONFIG_ITEM_STRING:
-        if( !p_item->i_list )
-            p_control = new StringConfigControl( p_this, p_item, parent, false );
-        else
+        if( p_item->list.psz_cb )
             p_control = new StringListConfigControl( p_this, p_item, parent );
+        else
+            p_control = new StringConfigControl( p_this, p_item, parent, false );
         break;
     case CONFIG_ITEM_PASSWORD:
-        if( !p_item->i_list )
-            p_control = new StringConfigControl( p_this, p_item, parent, true );
-        else
-            p_control = new StringListConfigControl( p_this, p_item, parent );
+        p_control = new StringConfigControl( p_this, p_item, parent, true );
         break;
     case CONFIG_ITEM_RGB:
         p_control = new ColorConfigControl( p_this, p_item, parent );
         break;
     case CONFIG_ITEM_INTEGER:
-        if( p_item->i_list )
+        if( p_item->list.i_cb )
             p_control = new IntegerListConfigControl( p_this, p_item, parent, false );
         else if( p_item->min.i || p_item->max.i )
             p_control = new IntegerRangeConfigControl( p_this, p_item, parent );
@@ -397,23 +393,6 @@ StringListConfigControl::StringListConfigControl( vlc_object_t *_p_this,
     module_config_t *p_module_config = config_FindConfig( p_this, p_item->psz_name );
 
     finish( p_module_config );
-
-    if( p_item->i_action )
-    {
-        QSignalMapper *signalMapper = new QSignalMapper(this);
-
-        /* Some stringLists like Capture listings have action associated */
-        for( int i = 0; i < p_item->i_action; i++ )
-        {
-            QPushButton *button =
-                new QPushButton( qtr( p_item->ppsz_action_text[i] ), p );
-            buttons << button;
-            CONNECT( button, clicked(), signalMapper, map() );
-            signalMapper->setMapping( button, i );
-        }
-        CONNECT( signalMapper, mapped( int ),
-                this, actionRequested( int ) );
-    }
 }
 
 void StringListConfigControl::fillGrid( QGridLayout *l, int line )
@@ -422,7 +401,7 @@ void StringListConfigControl::fillGrid( QGridLayout *l, int line )
     l->addWidget( combo, line, LAST_COLUMN, Qt::AlignRight );
     int i = 0;
     foreach( QPushButton *button, buttons )
-        l->addWidget( button, line, LAST_COLUMN - p_item->i_action + i++,
+        l->addWidget( button, line, LAST_COLUMN + i++,
                       Qt::AlignRight );
 }
 
@@ -430,24 +409,6 @@ void StringListConfigControl::comboIndexChanged( int i_index )
 {
     Q_UNUSED( i_index );
     emit changed();
-}
-
-void StringListConfigControl::actionRequested( int i_action )
-{
-    /* Supplementary check for boundaries */
-    if( i_action < 0 || i_action >= p_item->i_action ) return;
-
-    module_config_t *p_module_config = config_FindConfig( p_this, getName() );
-    if(!p_module_config) return;
-
-    vlc_value_t val;
-    val.psz_string = const_cast<char *>
-        qtu( (combo->itemData( combo->currentIndex() ).toString() ) );
-
-    p_module_config->ppf_action[i_action]( p_this, getName(), val, val, 0 );
-
-    combo->clear();
-    finish( p_module_config );
 }
 
 StringListConfigControl::StringListConfigControl( vlc_object_t *_p_this,
@@ -469,33 +430,22 @@ void StringListConfigControl::finish(module_config_t *p_module_config )
 
     if(!p_module_config) return;
 
-    if( p_module_config->pf_update_list )
+    char **values, **texts;
+    ssize_t count = config_GetPszChoices( p_this, p_item->psz_name,
+                                          &values, &texts );
+    for( ssize_t i = 0; i < count && texts; i++ )
     {
-        vlc_value_t val;
-        val.psz_string = strdup(p_module_config->value.psz);
+        if( texts[i] == NULL || values[i] == NULL )
+            continue;
 
-        p_module_config->pf_update_list(p_this, p_item->psz_name, val, val, NULL);
-        free( val.psz_string );
-    }
-
-    for( int i_index = 0; i_index < p_module_config->i_list; i_index++ )
-    {
-        if( !p_module_config->ppsz_list[i_index] )
-        {
-              combo->addItem( "", QVariant(""));
-              if( !p_item->value.psz )
-                 combo->setCurrentIndex( combo->count() - 1 );
-              continue;
-        }
-        combo->addItem( qfu((p_module_config->ppsz_list_text &&
-                            p_module_config->ppsz_list_text[i_index])?
-                            _(p_module_config->ppsz_list_text[i_index]) :
-                            p_module_config->ppsz_list[i_index] ),
-                   QVariant( qfu(p_module_config->ppsz_list[i_index] )) );
-        if( p_item->value.psz && !strcmp( p_module_config->value.psz,
-                                          p_module_config->ppsz_list[i_index] ) )
+        combo->addItem( qfu(texts[i]), QVariant( qfu(values[i])) );
+        if( !strcmp( p_item->value.psz ? p_item->value.psz : "", values[i] ) )
             combo->setCurrentIndex( combo->count() - 1 );
+        free( texts[i] );
+        free( values[i] );
     }
+    free( texts );
+    free( values );
 
     if( p_module_config->psz_longtext  )
     {
@@ -518,39 +468,43 @@ void setfillVLCConfigCombo( const char *configname, intf_thread_t *p_intf,
 {
     module_config_t *p_config =
                       config_FindConfig( VLC_OBJECT(p_intf), configname );
-    if( p_config )
+    if( p_config == NULL )
+        return;
+
+    if( (p_config->i_type & 0xF0) == CONFIG_ITEM_STRING )
     {
-        QVariant def;
-        bool string = (p_config->i_type & 0xF0) == CONFIG_ITEM_STRING;
-
-        if( string )
-            def = QVariant( qfu(p_config->value.psz) );
-        else
-            def = QVariant( qlonglong( p_config->value.i ) );
-
-        if(p_config->pf_update_list)
+        char **values, **texts;
+        ssize_t count = config_GetPszChoices(VLC_OBJECT(p_intf),
+                                             configname, &values, &texts);
+        for( ssize_t i = 0; i < count; i++ )
         {
-            vlc_value_t val;
-            val.i_int = p_config->value.i;
-            p_config->pf_update_list(VLC_OBJECT(p_intf), configname, val, val, NULL);
+            combo->addItem( qtr(texts[i]), QVariant(qfu(values[i])) );
+            if( !strcmp(p_config->value.psz, values[i]) )
+                combo->setCurrentIndex( i );
+            free( texts[i] );
+            free( values[i] );
         }
-
-        for ( int i_index = 0; i_index < p_config->i_list; i_index++ )
-        {
-            QVariant value;
-
-            if( string )
-                value = QVariant( qfu(p_config->ppsz_list[i_index]) );
-            else
-                value =QVariant( p_config->pi_list[i_index] );
-            combo->addItem( qtr(p_config->ppsz_list_text[i_index]), value );
-            if( def == value )
-                combo->setCurrentIndex( i_index );
-        }
-
-        if( p_config->psz_longtext )
-            combo->setToolTip( qfu( p_config->psz_longtext ) );
+        free( texts );
+        free( values );
     }
+    else
+    {
+        int64_t *values;
+        char **texts;
+        ssize_t count = config_GetIntChoices(VLC_OBJECT(p_intf), configname,
+                                             &values, &texts);
+        for( ssize_t i = 0; i < count; i++ )
+        {
+            combo->addItem( qtr(texts[i]), QVariant(qlonglong(values[i])) );
+            if( p_config->value.i == values[i] )
+                combo->setCurrentIndex( i );
+            free( texts[i] );
+        }
+        free( texts );
+    }
+
+    if( p_config->psz_longtext != NULL )
+        combo->setToolTip( qfu( p_config->psz_longtext ) );
 }
 
 /********* Module **********/
@@ -581,15 +535,16 @@ ModuleConfigControl::ModuleConfigControl( vlc_object_t *_p_this,
 
 void ModuleConfigControl::finish( bool bycat )
 {
-    module_t *p_parser;
-
     combo->setEditable( false );
 
     /* build a list of available modules */
-    module_t **p_list = module_list_get( NULL );
+    size_t count;
+    module_t **p_list = module_list_get( &count );
     combo->addItem( qtr("Default") );
-    for( size_t i = 0; (p_parser = p_list[i]) != NULL; i++ )
+    for( size_t i = 0; i < count; i++ )
     {
+        module_t *p_parser = p_list[i];
+
         if( bycat )
         {
             if( !strcmp( module_get_object( p_parser ), "main" ) ) continue;
@@ -707,12 +662,13 @@ void ModuleListConfigControl::checkbox_lists( QString label, QString help, const
 
 void ModuleListConfigControl::finish( bool bycat )
 {
-    module_t *p_parser;
-
     /* build a list of available modules */
-    module_t **p_list = module_list_get( NULL );
-    for( size_t i = 0; (p_parser = p_list[i]) != NULL; i++ )
+    size_t count;
+    module_t **p_list = module_list_get( &count );
+    for( size_t i = 0; i < count; i++ )
     {
+        module_t *p_parser = p_list[i];
+
         if( bycat )
         {
             if( !strcmp( module_get_object( p_parser ), "main" ) ) continue;
@@ -923,24 +879,6 @@ IntegerListConfigControl::IntegerListConfigControl( vlc_object_t *_p_this,
     module_config_t *p_module_config = config_FindConfig( p_this, p_item->psz_name );
 
     finish( p_module_config );
-
-    if( p_item->i_action )
-    {
-        QSignalMapper *signalMapper = new QSignalMapper(this);
-
-        /* Some stringLists like Capture listings have action associated */
-        for( int i = 0; i < p_item->i_action; i++ )
-        {
-            QPushButton *button =
-                    new QPushButton( qfu( p_item->ppsz_action_text[i] ), p );
-            buttons << button;
-            CONNECT( button, clicked(), signalMapper, map() );
-            signalMapper->setMapping( button, i );
-        }
-        CONNECT( signalMapper, mapped( int ),
-                this, actionRequested( int ) );
-    }
-
 }
 
 void IntegerListConfigControl::fillGrid( QGridLayout *l, int line )
@@ -949,7 +887,7 @@ void IntegerListConfigControl::fillGrid( QGridLayout *l, int line )
     l->addWidget( combo, line, LAST_COLUMN, Qt::AlignRight );
     int i = 0;
     foreach( QPushButton *button, buttons )
-        l->addWidget( button, line, LAST_COLUMN - p_item->i_action + i++,
+        l->addWidget( button, line, LAST_COLUMN + i++,
                       Qt::AlignRight );
 }
 
@@ -971,21 +909,19 @@ void IntegerListConfigControl::finish(module_config_t *p_module_config )
 
     if(!p_module_config) return;
 
-    if( p_module_config->pf_update_list )
+    int64_t *values;
+    char **texts;
+    ssize_t count = config_GetIntChoices( p_this, p_module_config->psz_name,
+                                          &values, &texts );
+    for( ssize_t i = 0; i < count; i++ )
     {
-       vlc_value_t val;
-       val.i_int = p_module_config->value.i;
-
-       p_module_config->pf_update_list(p_this, p_item->psz_name, val, val, NULL);
-    }
-
-    for( int i_index = 0; i_index < p_module_config->i_list; i_index++ )
-    {
-        combo->addItem( qtr(p_module_config->ppsz_list_text[i_index] ),
-                        QVariant( p_module_config->pi_list[i_index] ) );
-        if( p_module_config->value.i == p_module_config->pi_list[i_index] )
+        combo->addItem( qtr(texts[i]), qlonglong(values[i]) );
+        if( p_module_config->value.i == values[i] )
             combo->setCurrentIndex( combo->count() - 1 );
+        free( texts[i] );
     }
+    free( texts );
+    free( values );
     if( p_item->psz_longtext )
     {
         QString tipText = qtr(p_item->psz_longtext );
@@ -995,24 +931,6 @@ void IntegerListConfigControl::finish(module_config_t *p_module_config )
     }
     if( label )
         label->setBuddy( combo );
-}
-
-void IntegerListConfigControl::actionRequested( int i_action )
-{
-    /* Supplementary check for boundaries */
-    if( i_action < 0 || i_action >= p_item->i_action ) return;
-
-    module_config_t *p_module_config = config_FindConfig( p_this, getName() );
-    if(!p_module_config) return;
-
-
-    vlc_value_t val;
-    val.i_int = combo->itemData( combo->currentIndex() ).toInt();
-
-    p_module_config->ppf_action[i_action]( p_this, getName(), val, val, 0 );
-
-    combo->clear();
-    finish( p_module_config );
 }
 
 int IntegerListConfigControl::getValue() const

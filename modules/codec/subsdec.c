@@ -51,6 +51,7 @@ static const char *const ppsz_encodings[] = {
     "GB18030",
     "ISO-8859-15",
     "Windows-1252",
+    "IBM850",
     "ISO-8859-2",
     "Windows-1250",
     "ISO-8859-3",
@@ -103,6 +104,7 @@ static const char *const ppsz_encoding_names[] = {
     /* 1 */
     N_("Western European (Latin-9)"), /* mostly superset of Latin-1 */
     N_("Western European (Windows-1252)"),
+    N_("Western European (IBM 00850)"),
     /* 2 */
     N_("Eastern European (Latin-2)"),
     N_("Eastern European (Windows-1250)"),
@@ -186,7 +188,7 @@ vlc_module_begin ()
         change_integer_list( pi_justification, ppsz_justification_text )
     add_string( "subsdec-encoding", "",
                 ENCODING_TEXT, ENCODING_LONGTEXT, false )
-        change_string_list( ppsz_encodings, ppsz_encoding_names, 0 )
+        change_string_list( ppsz_encodings, ppsz_encoding_names )
     add_bool( "subsdec-autodetect-utf8", true,
               AUTODETECT_UTF8_TEXT, AUTODETECT_UTF8_LONGTEXT, false )
     add_bool( "subsdec-formatted", true, FORMAT_TEXT, FORMAT_LONGTEXT,

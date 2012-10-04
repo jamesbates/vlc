@@ -1,5 +1,5 @@
 /*****************************************************************************
- * audio.c: audio decoder using ffmpeg library
+ * audio.c: audio decoder using libavcodec library
  *****************************************************************************
  * Copyright (C) 1999-2003 the VideoLAN team
  * $Id$
@@ -34,12 +34,8 @@
 #include <vlc_codec.h>
 #include <vlc_avcodec.h>
 
-/* ffmpeg header */
-#ifdef HAVE_LIBAVCODEC_AVCODEC_H
-#   include <libavcodec/avcodec.h>
-#else
-#   include <avcodec.h>
-#endif
+#include <libavcodec/avcodec.h>
+#include <libavutil/mem.h>
 
 #if LIBAVUTIL_VERSION_INT >= ((50<<16)+(38<<8)+0)
 # include "libavutil/audioconvert.h"
@@ -141,7 +137,7 @@ static void InitDecoderConfig( decoder_t *p_dec, AVCodecContext *p_context )
 /*****************************************************************************
  * InitAudioDec: initialize audio decoder
  *****************************************************************************
- * The ffmpeg codec will be opened, some memory allocated.
+ * The avcodec codec will be opened, some memory allocated.
  *****************************************************************************/
 int InitAudioDec( decoder_t *p_dec, AVCodecContext *p_context,
                       AVCodec *p_codec, int i_codec_id, const char *psz_namecodec )
@@ -225,11 +221,11 @@ int InitAudioDec( decoder_t *p_dec, AVCodecContext *p_context,
  * SplitBuffer: Needed because aout really doesn't like big audio chunk and
  * wma produces easily > 30000 samples...
  *****************************************************************************/
-static aout_buffer_t *SplitBuffer( decoder_t *p_dec )
+static block_t *SplitBuffer( decoder_t *p_dec )
 {
     decoder_sys_t *p_sys = p_dec->p_sys;
     int i_samples = __MIN( p_sys->i_samples, 4096 );
-    aout_buffer_t *p_buffer;
+    block_t *p_buffer;
 
     if( i_samples == 0 ) return NULL;
 
@@ -256,11 +252,11 @@ static aout_buffer_t *SplitBuffer( decoder_t *p_dec )
 /*****************************************************************************
  * DecodeAudio: Called to decode one frame
  *****************************************************************************/
-aout_buffer_t * DecodeAudio ( decoder_t *p_dec, block_t **pp_block )
+block_t * DecodeAudio ( decoder_t *p_dec, block_t **pp_block )
 {
     decoder_sys_t *p_sys = p_dec->p_sys;
     int i_used, i_output;
-    aout_buffer_t *p_buffer;
+    block_t *p_buffer;
     block_t *p_block;
     AVPacket pkt;
 

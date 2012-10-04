@@ -89,7 +89,9 @@ typedef struct {
  */
 struct filter_sys_t
 {
-    int  i_mode;              /**< Deinterlace mode */
+    const vlc_chroma_description_t *chroma;
+
+    uint8_t  i_mode;              /**< Deinterlace mode */
 
     /* Algorithm behaviour flags */
     bool b_double_rate;       /**< Shall we double the framerate? */
@@ -98,8 +100,10 @@ struct filter_sys_t
 
     /** Merge routine: C, MMX, SSE, ALTIVEC, NEON, ... */
     void (*pf_merge) ( void *, const void *, const void *, size_t );
-    /** Merge finalization routine: C, MMX, SSE, ALTIVEC, NEON, ... */
+#if defined (__i386__) || defined (__x86_64__)
+    /** Merge finalization routine for SSE */
     void (*pf_end_merge) ( void );
+#endif
 
     /**
      * Metadata history (PTS, nb_fields, TFF). Used for framerate doublers.
@@ -130,11 +134,9 @@ struct filter_sys_t
  *
  * @param p_filter The filter instance.
  * @param psz_method Desired method. See mode_list for available choices.
- * @param i_chroma Input chroma. Set this to p_filter->fmt_in.video.i_chroma.
  * @see mode_list
  */
-void SetFilterMethod( filter_t *p_filter, const char *psz_method,
-                      vlc_fourcc_t i_chroma );
+void SetFilterMethod( filter_t *p_filter, const char *psz_method );
 
 /**
  * Get the output video format of the chosen deinterlace method
@@ -151,20 +153,6 @@ void SetFilterMethod( filter_t *p_filter, const char *psz_method,
 void GetOutputFormat( filter_t *p_filter,
                       video_format_t *p_dst,
                       const video_format_t *p_src );
-
-/**
- * Returns whether the specified chroma is implemented in the deinterlace
- * filter.
- *
- * Currently, supported chromas are I420, J420 (4:2:0 full scale),
- * YV12 (like I420, but YVU), I422 and J422.
- *
- * Note for deinterlace hackers: adding support for a new chroma typically
- * requires changes to all low-level functions across all the algorithms.
- *
- * @see vlc_fourcc_t
- */
-bool IsChromaSupported( vlc_fourcc_t i_chroma );
 
 /*****************************************************************************
  * video filter2 functions

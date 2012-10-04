@@ -131,7 +131,10 @@ OMX_ERRORTYPE WaitForSpecificOmxEvent(decoder_t *p_dec,
 /*****************************************************************************
  * Picture utility functions
  *****************************************************************************/
-void CopyOmxPicture( decoder_t *, picture_t *, OMX_BUFFERHEADERTYPE *, int );
+void CopyOmxPicture( int i_color_format, picture_t *p_pic,
+                     int i_slice_height,
+                     int i_src_stride, uint8_t *p_src, int i_chroma_div );
+
 void CopyVlcPicture( decoder_t *, OMX_BUFFERHEADERTYPE *, picture_t * );
 
 /*****************************************************************************
@@ -186,5 +189,5 @@ unsigned int GetAudioParamSize(OMX_INDEXTYPE index);
  *****************************************************************************/
 #define OMX_QCOM_COLOR_FormatYVU420SemiPlanar 0x7FA30C00
 #define OMX_TI_COLOR_FormatYUV420PackedSemiPlanar 0x7F000100
-
+#define QOMX_COLOR_FormatYUV420PackedSemiPlanar64x32Tile2m8ka 0x7FA30C03
 #define OMX_IndexVendorSetYUV420pMode 0x7f000003

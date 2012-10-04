@@ -34,30 +34,21 @@
 #import <vlc_vout.h>
 #import <vlc_aout.h>
 #import <vlc_input.h>
+#import <vlc_vout_window.h>
 
 #import <Cocoa/Cocoa.h>
 #import "CompatibilityFixes.h"
 #import "SPMediaKeyTap.h"                   /* for the media key support */
 #import "misc.h"
 #import "MainWindow.h"
+#import "StringUtility.h"
+
+#import <IOKit/pwr_mgt/IOPMLib.h>           /* for sleep prevention */
 
 /*****************************************************************************
  * Local prototypes.
  *****************************************************************************/
-unsigned int CocoaKeyToVLC( unichar i_key );
-
 #define VLCIntf [[VLCMain sharedInstance] intf]
-
-#define _NS(s) [[VLCMain sharedInstance] localizedString: s]
-/* Get an alternate version of the string.
- * This string is stored as '1:string' but when displayed it only displays
- * the translated string. the translation should be '1:translatedstring' though */
-#define _ANS(s) [[[VLCMain sharedInstance] localizedString: _(s)] substringFromIndex:2]
-
-#define MACOS_VERSION [[[NSDictionary dictionaryWithContentsOfFile: \
-            @"/System/Library/CoreServices/SystemVersion.plist"] \
-            objectForKey: @"ProductVersion"] floatValue]
-
 
 // You need to release those objects after use
 input_thread_t *getInput(void);
@@ -86,7 +77,9 @@ struct intf_sys_t
 @class VLCEmbeddedWindow;
 @class VLCControls;
 @class VLCPlaylist;
-@interface VLCMain : NSObject <NSWindowDelegate>
+@class VLCVoutWindowController;
+
+@interface VLCMain : NSObject <NSWindowDelegate, NSApplicationDelegate>
 {
     intf_thread_t *p_intf;      /* The main intf object */
     input_thread_t *p_current_input;
@@ -95,7 +88,6 @@ struct intf_sys_t
     id o_sprefs;                /* VLCSimplePrefs */
     id o_open;                  /* VLCOpen        */
     id o_wizard;                /* VLCWizard      */
-    id o_embedded_list;         /* VLCEmbeddedList*/
     id o_coredialogs;           /* VLCCoreDialogProvider */
     id o_info;                  /* VLCInformation */
     id o_eyetv;                 /* VLCEyeTVController */
@@ -117,6 +109,7 @@ struct intf_sys_t
     IBOutlet VLCControls * o_controls;     /* VLCControls    */
     IBOutlet VLCPlaylist * o_playlist;     /* VLCPlaylist    */
 
+    /* messages panel */
     IBOutlet NSWindow * o_msgs_panel;           /* messages panel */
     NSMutableArray * o_msg_arr;                 /* messages array */
     NSLock * o_msg_lock;                        /* messages lock */
@@ -134,6 +127,7 @@ struct intf_sys_t
     IBOutlet NSTextField * o_crashrep_desc_txt;
     IBOutlet NSWindow * o_crashrep_win;
     IBOutlet NSButton * o_crashrep_includeEmail_ckb;
+    IBOutlet NSButton * o_crashrep_dontaskagain_ckb;
     IBOutlet NSTextField * o_crashrep_includeEmail_txt;
     NSURLConnection * crashLogURLConnection;
 
@@ -146,7 +140,14 @@ struct intf_sys_t
     SPMediaKeyTap * o_mediaKeyController;
 
     NSArray *o_usedHotkeys;
+
+    /* sleep management */
+    IOPMAssertionID systemSleepAssertionID;
+
+    VLCVoutWindowController *o_vout_controller;
 }
+
+@property (readonly) VLCVoutWindowController* voutController;
 
 + (VLCMain *)sharedInstance;
 
@@ -154,7 +155,7 @@ struct intf_sys_t
 - (void)setIntf:(intf_thread_t *)p_mainintf;
 
 - (id)mainMenu;
-- (id)mainWindow;
+- (VLCMainWindow *)mainWindow;
 - (id)controls;
 - (id)bookmarks;
 - (id)open;
@@ -163,23 +164,17 @@ struct intf_sys_t
 - (id)playlist;
 - (id)info;
 - (id)wizard;
-- (id)embeddedList;
-- (id)getVideoViewAtPositionX: (int *)pi_x Y: (int *)pi_y withWidth: (unsigned int*)pi_width andHeight: (unsigned int*)pi_height;
-- (void)setNativeVideoSize:(NSSize)size;
+- (id)getVideoViewAtPositionX: (int *)pi_x Y: (int *)pi_y withWidth: (unsigned int*)pi_width andHeight: (unsigned int*)pi_height forWindow:(vout_window_t *)p_wnd;
 - (id)coreDialogProvider;
 - (id)eyeTVController;
 - (id)appleRemoteController;
 - (void)setActiveVideoPlayback:(BOOL)b_value;
 - (BOOL)activeVideoPlayback;
 - (void)applicationWillTerminate:(NSNotification *)notification;
-- (NSString *)localizedString:(const char *)psz;
-- (char *)delocalizeString:(NSString *)psz;
-- (NSString *)wrapString: (NSString *)o_in_string toWidth: (int)i_width;
-- (BOOL)hasDefinedShortcutKey:(NSEvent *)o_event;
-- (NSString *)VLCKeyToString:(NSString *)theString;
-- (unsigned int)VLCModifiersToCocoa:(NSString *)theString;
 - (void)updateCurrentlyUsedHotkeys;
 - (void)fullscreenChanged;
+- (BOOL)hasDefinedShortcutKey:(NSEvent *)o_event force:(BOOL)b_force;
+- (void)checkFullscreenChange:(NSNumber *)o_full;
 - (void)PlaylistItemChanged;
 - (void)playbackStatusUpdated;
 - (void)sendDistributedNotificationWithUpdatedPlaybackStatus;
@@ -196,7 +191,6 @@ struct intf_sys_t
 - (void)showFullscreenController;
 - (void)updateDelays;
 - (void)initStrings;
-- (BOOL)application:(NSApplication *)o_app openFile:(NSString *)o_filename;
 
 - (IBAction)crashReporterAction:(id)sender;
 - (IBAction)openCrashLog:(id)sender;
@@ -224,6 +218,5 @@ struct intf_sys_t
  *****************************************************************************/
 
 @interface VLCApplication : NSApplication
-{
-}
+
 @end
