@@ -84,7 +84,7 @@ libtool: libtool-$(LIBTOOL_VERSION).tar.gz
 	$(UNPACK)
 	$(MOVE)
 
-.libtool: libtool
+.libtool: libtool .gettext
 	(cd $<; ./configure --prefix=$(PREFIX) && make && make install)
 	ln -sf libtool $(PREFIX)/bin/glibtool
 	ln -sf libtoolize $(PREFIX)/bin/glibtoolize
@@ -137,7 +137,7 @@ autoconf: autoconf-$(AUTOCONF_VERSION).tar.bz2
 	$(UNPACK)
 	$(MOVE)
 
-.autoconf: autoconf .pkg-config
+.autoconf: autoconf .pkg-config .gettext
 	(cd $<; ./configure --prefix=$(PREFIX) && make && make install)
 	touch $@
 
@@ -161,6 +161,23 @@ automake: automake-$(AUTOMAKE_VERSION).tar.gz
 CLEAN_FILE += .automake
 CLEAN_PKG += automake
 DISTCLEAN_PKG += automake-$(AUTOMAKE_VERSION).tar.gz
+
+# gettext
+
+gettext-$(GETTEXT_VERSION).tar.gz:
+	$(call download,$(GETTEXT_URL))
+
+gettext: gettext-$(GETTEXT_VERSION).tar.gz
+	$(UNPACK)
+	$(MOVE)
+
+.gettext: gettext
+	(cd $<; ./configure --prefix=$(PREFIX) && make && make install)
+	touch $@
+
+CLEAN_FILE += .gettext
+CLEAN_PKG += gettext
+DISTCLEAN_PKG += gettext-$(GETTEXT_VERSION).tar.gz
 
 # m4
 

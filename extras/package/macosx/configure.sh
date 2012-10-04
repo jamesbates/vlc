@@ -39,6 +39,7 @@ OPTIONS="
         --disable-xcb
         --disable-caca
         --disable-sdl
+        --disable-a52
         --disable-samplerate
         --disable-macosx-dialog-provider
 "

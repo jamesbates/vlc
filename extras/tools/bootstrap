@@ -54,6 +54,7 @@ else
 fi
 }
 
+check gettext
 check autoconf 2.67
 check automake 1.11
 check m4

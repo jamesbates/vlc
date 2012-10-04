@@ -16,6 +16,9 @@ AUTOCONF_URL=$(GNU)/autoconf/autoconf-$(AUTOCONF_VERSION).tar.bz2
 AUTOMAKE_VERSION=1.11.2
 AUTOMAKE_URL=$(GNU)/automake/automake-$(AUTOMAKE_VERSION).tar.gz
 
+GETTEXT_VERSION=0.18.1.1
+GETTEXT_URL=$(GNU)/gettext/gettext-$(GETTEXT_VERSION).tar.gz
+
 M4_VERSION=1.4.16
 M4_URL=$(GNU)/m4/m4-$(M4_VERSION).tar.gz
 

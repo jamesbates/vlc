@@ -10,7 +10,7 @@ info()
 }
 
 ARCH="x86_64"
-OSX_VERSION="10.6"
+OSX_VERSION="10.8"
 SDKROOT=`xcode-select -print-path`/Platforms/MacOSX.platform/Developer/SDKs/MacOSX$OSX_VERSION.sdk
 
 usage()
@@ -87,11 +87,15 @@ info "Building in \"$builddir\""
 export CC="xcrun clang"
 export CXX="xcrun clang++"
 export OBJC="xcrun clang"
+#export CC="gcc"
+#export CXX="g++"
+#export OBJC="gcc"
+
 export OSX_VERSION
 export SDKROOT
 export PATH="${vlcroot}/extras/tools/build/bin:$PATH"
 
-TRIPLET=$ARCH-apple-darwin10
+TRIPLET=$ARCH-apple-darwin12
 
 
 #
@@ -104,7 +108,6 @@ spushd "${vlcroot}/extras/tools"
 make > $out
 spopd
 
-
 #
 # vlc/contribs
 #
@@ -113,9 +116,9 @@ info "Building contribs"
 spushd "${vlcroot}/contrib"
 mkdir -p build && cd build
 ../bootstrap --build=$TRIPLET --host=$TRIPLET > $out
-if [ ! -e "../$TRIPLET" ]; then
-    make prebuilt > $out
-fi
+#if [ ! -e "../$TRIPLET" ]; then
+    make > $out
+#fi
 spopd
 
 

@@ -43,7 +43,7 @@ VLC-tmp: vlc
 	mkdir -p $(top_builddir)/tmp/modules/gui/macosx
 	cd "$(srcdir)/modules/gui/macosx/" && cp *.h *.m $(abs_top_builddir)/tmp/modules/gui/macosx/
 	cd $(top_builddir)/tmp/extras/package/macosx && \
-		xcodebuild -target vlc SYMROOT=../../../build DSTROOT=../../../build $(silentstd)
+		xcodebuild -target vlc SYMROOT=../../../build DSTROOT=../../../build # $(silentstd)
 	cp -R -L $(top_builddir)/tmp/build/Default/VLC.bundle $@
 	mkdir -p $@/Contents/Frameworks && cp -R -L $(CONTRIB_DIR)/Growl.framework $@/Contents/Frameworks/
 	mkdir -p $@/Contents/MacOS/share/locale/
