@@ -29,8 +29,10 @@ int GetVlcFourcc( int i_ffmpeg_codec, int *pi_cat,
                   vlc_fourcc_t *pi_fourcc, const char **ppsz_name );
 void GetVlcAudioFormat( vlc_fourcc_t *, unsigned *pi_bits, int i_sample_fmt );
 
-picture_t * DecodeVideo    ( decoder_t *, block_t ** );
-aout_buffer_t * DecodeAudio( decoder_t *, block_t ** );
+unsigned GetVlcDspMask( void );
+
+picture_t * DecodeVideo( decoder_t *, block_t ** );
+block_t * DecodeAudio( decoder_t *, block_t ** );
 subpicture_t *DecodeSubtitle( decoder_t *p_dec, block_t ** );
 
 /* Video encoder module */
@@ -72,7 +74,7 @@ int ffmpeg_OpenCodec( decoder_t *p_dec );
 
 #define ERROR_TEXT N_("Error resilience")
 #define ERROR_LONGTEXT N_( \
-    "FFmpeg can do error resilience.\n" \
+    "libavcodec can do error resilience.\n" \
     "However, with a buggy encoder (such as the ISO MPEG-4 encoder from M$) " \
     "this can produce a lot of errors.\n" \
     "Valid values range from 0 to 4 (0 disables all errors resilience).")
@@ -107,7 +109,7 @@ int ffmpeg_OpenCodec( decoder_t *p_dec );
 
 #define SKIP_IDCT_TEXT N_("Skip idct (default=0)")
 #define SKIP_IDCT_LONGTEXT N_( \
-    "Force skipping of idct to speed up decoding for frame types" \
+    "Force skipping of idct to speed up decoding for frame types " \
     "(-1=None, 0=Default, 1=B-frames, 2=P-frames, 3=B+P frames, 4=all frames)." )
 
 #define DEBUG_TEXT N_( "Debug mask" )
@@ -137,6 +139,9 @@ int ffmpeg_OpenCodec( decoder_t *p_dec );
 
 #define HW_TEXT N_("Hardware decoding")
 #define HW_LONGTEXT N_("This allows hardware decoding when available.")
+
+#define VDA_PIX_FMT_TEXT N_("VDA output pixel format")
+#define VDA_PIX_FMT_LONGTEXT N_("The pixel format for output image buffers.")
 
 #define THREADS_TEXT N_( "Threads" )
 #define THREADS_LONGTEXT N_( "Number of threads used for decoding, 0 meaning auto" )
@@ -255,7 +260,8 @@ int ffmpeg_OpenCodec( decoder_t *p_dec );
 #define ENC_PROFILE_TEXT N_( "Specify AAC audio profile to use" )
 #define ENC_PROFILE_LONGTEXT N_( "Specify the AAC audio profile to use " \
    "for encoding the audio bitstream. It takes the following options: " \
-   "main, low, ssr (not supported) and ltp (default: main)" )
+   "main, low, ssr (not supported),ltp, hev1, hev2 (default: low). " \
+   "hev1 and hev2 are currently supported only with libfdk-aac enabled libavcodec" )
 
 #define AVCODEC_COMMON_MEMBERS   \
     int i_cat;                  \
@@ -273,10 +279,21 @@ int ffmpeg_OpenCodec( decoder_t *p_dec );
 #   define HAVE_AVCODEC_MT
 #endif
 
-/* Uncomment it to enable compilation with vaapi/dxva2 (you also must change the build
+
+/* LIBAVCODEC_VERSION_CHECK checks for the right version of libav and FFmpeg
+ * a is the major version
+ * b and c the minor and micro versions of libav
+ * d and e the minor and micro versions of FFmpeg */
+#define LIBAVCODEC_VERSION_CHECK( a, b, c, d, e ) \
+    (LIBAVCODEC_VERSION_MICRO <  100 && LIBAVCODEC_VERSION_INT >= AV_VERSION_INT( a, b, c ) ) || \
+    (LIBAVCODEC_VERSION_MICRO >= 100 && LIBAVCODEC_VERSION_INT >= AV_VERSION_INT( a, d, e ) )
+
+
+/* Uncomment it to enable compilation with vaapi/dxva2/vda (you also must change the build
  * system) */
 //#define HAVE_AVCODEC_VAAPI 1
 //#define HAVE_AVCODEC_DXVA2 1
+//#define HAVE_AVCODEC_VDA 1
 
 /* Ugly ifdefinitions to provide backwards compatibility with older ffmpeg/libav
  * versions */

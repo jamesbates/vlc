@@ -1,7 +1,7 @@
 /*****************************************************************************
  * open.h: Open dialogues for VLC's MacOS X port
  *****************************************************************************
- * Copyright (C) 2002-2011 VLC authors and VideoLAN
+ * Copyright (C) 2002-2012 VLC authors and VideoLAN
  * $Id$
  *
  * Authors: Jon Lech Johansen <jon-vl@nanocrew.net>
@@ -24,14 +24,14 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston MA 02110-1301, USA.
  *****************************************************************************/
 
-#define kVLCMediaAudioCD "AudioCD"
-#define kVLCMediaDVD "DVD"
-#define kVLCMediaVCD "VCD"
-#define kVLCMediaSVCD "SVCD"
-#define kVLCMediaBD "Bluray"
-#define kVLCMediaVideoTSFolder "VIDEO_TS"
-#define kVLCMediaBDMVFolder "BDMV"
-#define kVLCMediaUnknown "Unknown"
+#define kVLCMediaAudioCD @"AudioCD"
+#define kVLCMediaDVD @"DVD"
+#define kVLCMediaVCD @"VCD"
+#define kVLCMediaSVCD @"SVCD"
+#define kVLCMediaBD @"Bluray"
+#define kVLCMediaVideoTSFolder @"VIDEO_TS"
+#define kVLCMediaBDMVFolder @"BDMV"
+#define kVLCMediaUnknown @"Unknown"
 
 /*****************************************************************************
  * Intf_Open interface
@@ -65,6 +65,11 @@
     IBOutlet id o_file_slave_icon_well;
     IBOutlet id o_file_subtitles_filename_lbl;
     IBOutlet id o_file_subtitles_icon_well;
+    IBOutlet id o_file_custom_timing_ckb;
+    IBOutlet id o_file_starttime_fld;
+    IBOutlet id o_file_starttime_lbl;
+    IBOutlet id o_file_stoptime_fld;
+    IBOutlet id o_file_stoptime_lbl;
 
     /* open disc */
     IBOutlet id o_disc_selector_pop;
@@ -205,15 +210,15 @@
     IBOutlet id o_screen_height_lbl;
     IBOutlet id o_screen_height_stp;
     IBOutlet id o_screen_follow_mouse_ckb;
+    IBOutlet id o_screen_qtk_audio_pop;
+    IBOutlet id o_screen_qtk_audio_ckb;
 
     /* QTK support */
     IBOutlet id o_qtk_view;
-    IBOutlet id o_qtk_long_lbl;
-    IBOutlet id o_qtk_device_pop;
-    IBOutlet id o_qtk_label_view;
-    IBOutlet id o_qtkaudio_view;
-    IBOutlet id o_qtkaudio_long_lbl;
-    IBOutlet id o_qtkaudio_device_pop;
+    IBOutlet id o_qtk_video_device_pop;
+    IBOutlet id o_qtk_video_ckb;
+    IBOutlet id o_qtk_audio_device_pop;
+    IBOutlet id o_qtk_audio_ckb;
     IBOutlet id o_capture_width_lbl;
     IBOutlet id o_capture_width_fld;
     IBOutlet id o_capture_width_stp;
@@ -230,7 +235,8 @@
     BOOL b_nodvdmenus;
     id o_currentOpticalMediaView;
     id o_currentOpticalMediaIconView;
-    NSMutableArray *o_opticalDevices;
+    NSMutableArray *o_allMediaDevices;
+    NSArray *o_opticalDevices;
     NSMutableArray *o_specialMediaFolders;
     NSString *o_file_path;
     id o_currentCaptureView;
@@ -243,13 +249,11 @@
 
 + (VLCOpen *)sharedInstance;
 
-- (void)setMRL:(NSString *)mrl;
-- (NSString *)MRL;
+@property (readwrite, assign) NSString *MRL;
+@property (readonly) NSArray *qtkvideoDevices;
+@property (readonly) NSArray *qtkaudioDevices;
 
-- (NSArray *)qtkvideoDevices;
 - (void)qtkrefreshVideoDevices;
-
-- (NSArray *)qtkaudioDevices;
 - (void)qtkrefreshAudioDevices;
 
 - (void)setSubPanel;
@@ -258,11 +262,11 @@
 - (void)textFieldWasClicked:(NSNotification *)o_notification;
 - (IBAction)expandMRLfieldAction:(id)sender;
 - (IBAction)inputSlaveAction:(id)sender;
+- (IBAction)fileTimeCustomization:(id)sender;
 
 - (void)openFileGeneric;
 - (void)openFilePathChanged:(NSNotification *)o_notification;
 - (IBAction)openFileBrowse:(id)sender;
-- (void)pathChosenInPanel: (NSOpenPanel *)sheet withReturn:(int)returnCode contextInfo:(void *)contextInfo;
 - (IBAction)openFileStreamChanged:(id)sender;
 
 - (void)openDisc;
@@ -271,7 +275,7 @@
 - (IBAction)openSpecialMediaFolder:(id)sender;
 - (IBAction)dvdreadOptionChanged:(id)sender;
 - (IBAction)vcdOptionChanged:(id)sender;
-- (char *)getVolumeTypeFromMountPath:(NSString *)mountPath;
+- (NSString *)getVolumeTypeFromMountPath:(NSString *)mountPath;
 - (NSString *)getBSDNodeFromMountPath:(NSString *)mountPath;
 
 - (void)openNet;
@@ -285,6 +289,7 @@
 - (IBAction)openCaptureModeChanged:(id)sender;
 - (IBAction)qtkChanged:(id)sender;
 - (IBAction)qtkAudioChanged:(id)sender;
+- (IBAction)qtkToggleUIElements:(id)sender;
 - (IBAction)screenChanged:(id)sender;
 - (IBAction)eyetvSwitchChannel:(id)sender;
 - (IBAction)eyetvLaunch:(id)sender;
@@ -308,7 +313,5 @@
 @end
 
 @interface VLCOpenTextField : NSTextField
-{
-}
 - (void)mouseDown:(NSEvent *)theEvent;
 @end

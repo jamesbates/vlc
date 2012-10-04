@@ -108,19 +108,22 @@ int RenderYadif( filter_t *p_filter, picture_t *p_dst, picture_t *p_src,
         void (*filter)(uint8_t *dst, uint8_t *prev, uint8_t *cur, uint8_t *next,
                        int w, int prefs, int mrefs, int parity, int mode);
 
-        filter = yadif_filter_line_c;
-#if defined(HAVE_YADIF_MMX)
-        if( vlc_CPU() & CPU_CAPABILITY_MMX )
-            filter = yadif_filter_line_mmx;
+#if defined(HAVE_YADIF_SSSE3)
+        if( vlc_CPU_SSSE3() )
+            filter = yadif_filter_line_ssse3;
+        else
 #endif
 #if defined(HAVE_YADIF_SSE2)
-        if( vlc_CPU() & CPU_CAPABILITY_SSE2 )
+        if( vlc_CPU_SSE2() )
             filter = yadif_filter_line_sse2;
+        else
 #endif
-#if defined(HAVE_YADIF_SSSE3)
-        if( vlc_CPU() & CPU_CAPABILITY_SSSE3 )
-            filter = yadif_filter_line_ssse3;
+#if defined(HAVE_YADIF_MMX)
+        if( vlc_CPU_MMX() )
+            filter = yadif_filter_line_mmx;
+        else
 #endif
+            filter = yadif_filter_line_c;
 
         for( int n = 0; n < p_dst->i_planes; n++ )
         {
@@ -133,7 +136,7 @@ int RenderYadif( filter_t *p_filter, picture_t *p_dst, picture_t *p_src,
             {
                 if( (y % 2) == i_field  ||  yadif_parity == 2 )
                 {
-                    vlc_memcpy( &dstp->p_pixels[y * dstp->i_pitch],
+                    memcpy( &dstp->p_pixels[y * dstp->i_pitch],
                                 &curp->p_pixels[y * curp->i_pitch], dstp->i_visible_pitch );
                 }
                 else
@@ -156,11 +159,11 @@ int RenderYadif( filter_t *p_filter, picture_t *p_dst, picture_t *p_src,
 
                 /* We duplicate the first and last lines */
                 if( y == 1 )
-                    vlc_memcpy(&dstp->p_pixels[(y-1) * dstp->i_pitch],
+                    memcpy(&dstp->p_pixels[(y-1) * dstp->i_pitch],
                                &dstp->p_pixels[ y    * dstp->i_pitch],
                                dstp->i_pitch);
                 else if( y == dstp->i_visible_lines - 2 )
-                    vlc_memcpy(&dstp->p_pixels[(y+1) * dstp->i_pitch],
+                    memcpy(&dstp->p_pixels[(y+1) * dstp->i_pitch],
                                &dstp->p_pixels[ y    * dstp->i_pitch],
                                dstp->i_pitch);
             }

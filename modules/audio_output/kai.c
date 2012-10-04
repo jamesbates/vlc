@@ -47,6 +47,8 @@ struct aout_sys_t
 {
     aout_packet_t   packet;
     HKAI            hkai;
+    float           soft_gain;
+    bool            soft_mute;
 };
 
 /*****************************************************************************
@@ -54,9 +56,11 @@ struct aout_sys_t
  *****************************************************************************/
 static int  Open  ( vlc_object_t * );
 static void Close ( vlc_object_t * );
-static void Play  ( audio_output_t *_p_aout, block_t *block );
+static void Play  ( audio_output_t *_p_aout, block_t *block, mtime_t * );
 
 static ULONG APIENTRY KaiCallback ( PVOID, PVOID, ULONG );
+
+#include "volume.h"
 
 /*****************************************************************************
  * Module descriptor
@@ -85,8 +89,8 @@ vlc_module_begin ()
     set_subcategory( SUBCAT_AUDIO_AOUT )
     add_string( "kai-audio-device", ppsz_kai_audio_device[0],
                 KAI_AUDIO_DEVICE_TEXT, KAI_AUDIO_DEVICE_LONGTEXT, false )
-        change_string_list( ppsz_kai_audio_device, ppsz_kai_audio_device_text,
-                            0 )
+        change_string_list( ppsz_kai_audio_device, ppsz_kai_audio_device_text )
+    add_sw_gain( )
     add_bool( "kai-audio-exclusive-mode", false,
               KAI_AUDIO_EXCLUSIVE_MODE_TEXT, KAI_AUDIO_EXCLUSIVE_MODE_LONGTEXT,
               true )
@@ -205,7 +209,7 @@ static int Open ( vlc_object_t *p_this )
 
     aout_PacketInit( p_aout, &p_sys->packet,
                      ks_obtained.ulBufferSize / i_bytes_per_frame );
-    aout_VolumeSoftInit( p_aout );
+    aout_SoftVolumeInit( p_aout );
 
     if ( var_Type( p_aout, "audio-device" ) == 0 )
     {
@@ -233,8 +237,6 @@ static int Open ( vlc_object_t *p_this )
         var_AddCallback( p_aout, "audio-device", aout_ChannelsRestart, NULL );
     }
 
-    var_TriggerCallback( p_aout, "intf-change" );
-
     /* Prevent SIG_FPE */
     _control87(MCW_EM, MCW_EM);
 
@@ -252,13 +254,14 @@ exit_free_sys :
 /*****************************************************************************
  * Play: play a sound samples buffer
  *****************************************************************************/
-static void Play (audio_output_t *p_aout, block_t *block)
+static void Play (audio_output_t *p_aout, block_t *block,
+                  mtime_t *restrict drift)
 {
     aout_sys_t *p_sys = p_aout->sys;
 
     kaiPlay( p_sys->hkai );
 
-    aout_PacketPlay( p_aout, block );
+    aout_PacketPlay( p_aout, block, drift );
 }
 
 /*****************************************************************************
@@ -284,7 +287,7 @@ static ULONG APIENTRY KaiCallback( PVOID p_cb_data,
                                    ULONG i_buf_size )
 {
     audio_output_t *p_aout = (audio_output_t *)p_cb_data;
-    aout_buffer_t  *p_aout_buffer;
+    block_t  *p_aout_buffer;
     mtime_t current_date, next_date;
     ULONG i_len;
 
@@ -318,7 +321,7 @@ static ULONG APIENTRY KaiCallback( PVOID p_cb_data,
 
         if ( p_aout_buffer != NULL )
         {
-            vlc_memcpy( ( uint8_t * ) p_buffer + i_len,
+            memcpy( ( uint8_t * ) p_buffer + i_len,
                         p_aout_buffer->p_buffer,
                         p_aout_buffer->i_buffer );
 
@@ -326,11 +329,11 @@ static ULONG APIENTRY KaiCallback( PVOID p_cb_data,
 
             next_date += p_aout_buffer->i_length;
 
-            aout_BufferFree( p_aout_buffer );
+            block_Release( p_aout_buffer );
         }
         else
         {
-            vlc_memset( ( uint8_t * ) p_buffer + i_len, 0, i_buf_size - i_len );
+            memset( ( uint8_t * ) p_buffer + i_len, 0, i_buf_size - i_len );
 
             i_len = i_buf_size;
         }

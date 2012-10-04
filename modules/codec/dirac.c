@@ -221,7 +221,7 @@ vlc_module_begin()
 
     add_string( ENC_CFG_PREFIX ENC_PREFILTER, "diaglp",
                 ENC_PREFILTER_TEXT, ENC_PREFILTER_LONGTEXT, false )
-    change_string_list( enc_prefilter_list, enc_prefilter_list_text, 0 );
+    change_string_list( enc_prefilter_list, enc_prefilter_list_text );
 
     add_integer( ENC_CFG_PREFIX ENC_PREFILTER_STRENGTH, 1,
                  ENC_PREFILTER_STRENGTH_TEXT, ENC_PREFILTER_STRENGTH_LONGTEXT, false )
@@ -229,7 +229,7 @@ vlc_module_begin()
 
     add_string( ENC_CFG_PREFIX ENC_CHROMAFMT, "420",
                 ENC_CHROMAFMT_TEXT, ENC_CHROMAFMT_LONGTEXT, false )
-    change_string_list( enc_chromafmt_list, enc_chromafmt_list_text, 0 );
+    change_string_list( enc_chromafmt_list, enc_chromafmt_list_text );
 
     add_integer( ENC_CFG_PREFIX ENC_L1SEP, -1,
                  ENC_L1SEP_TEXT, ENC_L1SEP_LONGTEXT, false )
@@ -241,11 +241,11 @@ vlc_module_begin()
 
     add_string( ENC_CFG_PREFIX ENC_CODINGMODE, "auto",
                 ENC_CODINGMODE_TEXT, ENC_CODINGMODE_LONGTEXT, false )
-    change_string_list( enc_codingmode_list, enc_codingmode_list_text, 0 );
+    change_string_list( enc_codingmode_list, enc_codingmode_list_text );
 
     add_string( ENC_CFG_PREFIX ENC_MVPREC, "1/2",
                 ENC_MVPREC_TEXT, ENC_MVPREC_LONGTEXT, false )
-    change_string_list( enc_mvprec_list, enc_mvprec_list, 0 );
+    change_string_list( enc_mvprec_list, enc_mvprec_list );
 
     add_integer( ENC_CFG_PREFIX ENC_MCBLK_WIDTH, -1,
                  ENC_MCBLK_WIDTH_TEXT, ENC_MCBLK_WIDTH_LONGTEXT, false )
@@ -834,7 +834,7 @@ static block_t *Encode( encoder_t *p_enc, picture_t *p_pic )
 
         for( i_line = 0; i_line < p_pic->p[i_plane].i_visible_lines; i_line++ )
         {
-            vlc_memcpy( p_dst, p_src, i_width );
+            memcpy( p_dst, p_src, i_width );
             p_dst += i_width;
             p_src += i_src_stride;
         }

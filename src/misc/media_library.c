@@ -213,16 +213,16 @@ int ml_UpdateSimple( media_library_t *p_media_library,
                                  "this argument is invalid for Update: %d",
                                  (int)sel );
 #endif
-                        i_ret = VLC_EGENERIC;
+                        i_ret = VLC_EBADVAR;
                     }
                     else if( sel == ML_END )
                         vlc_array_append( array, update );
                     break;
-                case 0:
+                case 1:
                     update->value.str = va_arg( args, char* );
                     vlc_array_append( array, update );
                     break;
-                case 1:
+                case 0:
                     update->value.i = va_arg( args, int );
                     vlc_array_append( array, update );
                     break;
@@ -341,36 +341,6 @@ ml_ftree_t* ml_FtreeSpec( ml_ftree_t* tree,
     return p_parent;
 }
 
-
-/**
- * @brief Creates and adds the playlist based on a given find tree
- * @param p_ml Media library object
- * @param p_tree Find tree to create SELECT
- */
-void ml_PlaySmartPlaylistBasedOn( media_library_t* p_ml,
-                                                ml_ftree_t* p_tree )
-{
-    assert( p_tree );
-    vlc_array_t* p_results = vlc_array_new();
-    ml_FindAdv( p_ml, p_results, ML_ID, NULL, p_tree );
-    playlist_t* p_pl = pl_Get( p_ml );
-    playlist_Lock( p_pl );
-    playlist_Clear( p_pl, true );
-    for( int i = 0; i < vlc_array_count( p_results ); i++ )
-    {
-        ml_result_t* p_res = ( ml_result_t* ) vlc_array_item_at_index( p_results, i );
-        input_item_t* p_item;
-        if( p_res )
-        {
-            p_item = ml_CreateInputItem( p_ml, p_res->value.i );
-            playlist_AddInput( p_pl, p_item, PLAYLIST_APPEND,
-                           PLAYLIST_END, true, true );
-        }
-    }
-    playlist_Unlock( p_pl );
-    ml_DestroyResultArray( p_results );
-    vlc_array_destroy( p_results );
-}
 
 /**
  * @brief Returns a person list of given type

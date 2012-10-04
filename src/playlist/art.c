@@ -184,7 +184,7 @@ int playlist_FindArtInCache( input_item_t *p_item )
             if( asprintf( &psz_file, "%s" DIR_SEP "%s",
                           psz_path, psz_filename ) != -1 )
             {
-                char *psz_uri = make_URI( psz_file, "file" );
+                char *psz_uri = vlc_path2uri( psz_file, "file" );
                 if( psz_uri )
                 {
                     input_item_SetArtURL( p_item, psz_uri );
@@ -204,17 +204,77 @@ int playlist_FindArtInCache( input_item_t *p_item )
     return b_found ? VLC_SUCCESS : VLC_EGENERIC;
 }
 
+static char * GetDirByItemUIDs( char *psz_uid )
+{
+    char *psz_cachedir = config_GetUserDir(VLC_CACHE_DIR);
+    char *psz_dir;
+    if( asprintf( &psz_dir, "%s" DIR_SEP
+                  "by-iiuid" DIR_SEP
+                  "%s",
+                  psz_cachedir, psz_uid ) == -1 )
+    {
+        psz_dir = NULL;
+    }
+    free( psz_cachedir );
+    return psz_dir;
+}
+
+static char * GetFileByItemUID( char *psz_dir, const char *psz_type )
+{
+    char *psz_file;
+    if( asprintf( &psz_file, "%s" DIR_SEP "%s", psz_dir, psz_type ) == -1 )
+    {
+        psz_file = NULL;
+    }
+    return psz_file;
+}
+
+int playlist_FindArtInCacheUsingItemUID( input_item_t *p_item )
+{
+    char *uid = input_item_GetInfo( p_item, "uid", "md5" );
+    if ( ! *uid )
+    {
+        free( uid );
+        return VLC_EGENERIC;
+    }
+
+    /* we have an input item uid set */
+    bool b_done = false;
+    char *psz_byuiddir = GetDirByItemUIDs( uid );
+    char *psz_byuidfile = GetFileByItemUID( psz_byuiddir, "arturl" );
+    free( psz_byuiddir );
+    if( psz_byuidfile )
+    {
+        FILE *fd = vlc_fopen( psz_byuidfile, "rb" );
+        if ( fd )
+        {
+            char sz_cachefile[2049];
+            /* read the cache hash url */
+            if ( fgets( sz_cachefile, 2048, fd ) != NULL )
+            {
+                input_item_SetArtURL( p_item, sz_cachefile );
+                b_done = true;
+            }
+            fclose( fd );
+        }
+        free( psz_byuidfile );
+    }
+    free( uid );
+    if ( b_done ) return VLC_SUCCESS;
+
+    return VLC_EGENERIC;
+}
 
 /* */
-int playlist_SaveArt( playlist_t *p_playlist, input_item_t *p_item,
-                      const uint8_t *p_buffer, int i_buffer, const char *psz_type )
+int playlist_SaveArt( vlc_object_t *obj, input_item_t *p_item,
+                      const void *data, size_t length, const char *psz_type )
 {
     char *psz_filename = ArtCacheName( p_item, psz_type );
 
     if( !psz_filename )
         return VLC_EGENERIC;
 
-    char *psz_uri = make_URI( psz_filename, "file" );
+    char *psz_uri = vlc_path2uri( psz_filename, "file" );
     if( !psz_uri )
     {
         free( psz_filename );
@@ -235,19 +295,47 @@ int playlist_SaveArt( playlist_t *p_playlist, input_item_t *p_item,
     FILE *f = vlc_fopen( psz_filename, "wb" );
     if( f )
     {
-        if( fwrite( p_buffer, i_buffer, 1, f ) != 1 )
+        if( fwrite( data, 1, length, f ) != length )
         {
-            msg_Err( p_playlist, "%s: %m", psz_filename );
+            msg_Err( obj, "%s: %m", psz_filename );
         }
         else
         {
-            msg_Dbg( p_playlist, "album art saved to %s", psz_filename );
+            msg_Dbg( obj, "album art saved to %s", psz_filename );
             input_item_SetArtURL( p_item, psz_uri );
         }
         fclose( f );
     }
-    free( psz_filename );
     free( psz_uri );
+
+    /* save uid info */
+    char *uid = input_item_GetInfo( p_item, "uid", "md5" );
+    if ( ! *uid )
+    {
+        free( uid );
+        goto end;
+    }
+
+    char *psz_byuiddir = GetDirByItemUIDs( uid );
+    char *psz_byuidfile = GetFileByItemUID( psz_byuiddir, "arturl" );
+    ArtCacheCreateDir( psz_byuiddir );
+    free( psz_byuiddir );
+
+    if ( psz_byuidfile )
+    {
+        f = vlc_fopen( psz_byuidfile, "wb" );
+        if ( f )
+        {
+            if( fputs( "file://", f ) < 0 || fputs( psz_filename, f ) < 0 )
+                msg_Err( obj, "Error writing %s: %m", psz_byuidfile );
+            fclose( f );
+        }
+        free( psz_byuidfile );
+    }
+    free( uid );
+    /* !save uid info */
+end:
+    free( psz_filename );
     return VLC_SUCCESS;
 }
 

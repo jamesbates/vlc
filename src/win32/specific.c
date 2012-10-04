@@ -33,49 +33,33 @@
 
 #include "../config/vlc_getopt.h"
 
-#if !defined( UNDER_CE )
-#   include  <mmsystem.h>
-#endif
-
+#include <mmsystem.h>
 #include <winsock.h>
 
-/*****************************************************************************
- * system_Init: initialize winsock and misc other things.
- *****************************************************************************/
-void system_Init( void )
+
+static int system_InitWSA(int hi, int lo)
 {
-    WSADATA Data;
+    WSADATA data;
 
-#if !defined( UNDER_CE )
+    if (WSAStartup(MAKEWORD(hi, lo), &data) == 0)
+    {
+        if (LOBYTE(data.wVersion) == 2 && HIBYTE(data.wVersion) == 2)
+            return 0;
+        /* Winsock DLL is not usable */
+        WSACleanup( );
+    }
+    return -1;
+}
+
+/**
+ * Initializes MME timer, Winsock.
+ */
+void system_Init(void)
+{
     timeBeginPeriod(5);
-#endif
 
-    /* WinSock Library Init. */
-    if( !WSAStartup( MAKEWORD( 2, 2 ), &Data ) )
-    {
-        /* Aah, pretty useless check, we should always have Winsock 2.2
-         * since it appeared in Win98. */
-        if( LOBYTE( Data.wVersion ) != 2 || HIBYTE( Data.wVersion ) != 2 )
-            /* We could not find a suitable WinSock DLL. */
-            WSACleanup( );
-        else
-            /* Everything went ok. */
-            return;
-    }
-
-    /* Let's try with WinSock 1.1 */
-    if( !WSAStartup( MAKEWORD( 1, 1 ), &Data ) )
-    {
-        /* Confirm that the WinSock DLL supports 1.1.*/
-        if( LOBYTE( Data.wVersion ) != 1 || HIBYTE( Data.wVersion ) != 1 )
-            /* We could not find a suitable WinSock DLL. */
-            WSACleanup( );
-        else
-            /* Everything went ok. */
-            return;
-    }
-
-    fprintf( stderr, "error: can't initialize WinSocks\n" );
+    if (system_InitWSA(2, 2) && system_InitWSA(1, 1))
+        fputs("Error: cannot initialize Winsocks\n", stderr);
 }
 
 /*****************************************************************************
@@ -96,7 +80,6 @@ typedef struct
 
 void system_Configure( libvlc_int_t *p_this, int i_argc, const char *const ppsz_argv[] )
 {
-#if !defined( UNDER_CE )
     /* Raise default priority of the current process */
 #ifndef ABOVE_NORMAL_PRIORITY_CLASS
 #   define ABOVE_NORMAL_PRIORITY_CLASS 0x00008000
@@ -223,8 +206,6 @@ void system_Configure( libvlc_int_t *p_this, int i_argc, const char *const ppsz_
             exit( 0 );
         }
     }
-
-#endif
 }
 
 static unsigned __stdcall IPCHelperThread( void *data )
@@ -306,8 +287,14 @@ LRESULT CALLBACK WMCOPYWNDPROC( HWND hwnd, UINT uMsg, WPARAM wParam,
                     i_options++;
                 }
 
-                char *psz_URI = make_URI( ppsz_argv[i_opt], NULL );
-                playlist_AddExt( p_playlist, psz_URI,
+#warning URI conversion must be done in calling process instead!
+                /* FIXME: This breaks relative paths if calling vlc.exe is
+                 * started from a different working directory. */
+                char *psz_URI = NULL;
+                if( strstr( psz_URI, "://" ) == NULL )
+                    psz_URI = vlc_path2uri( ppsz_argv[i_opt], NULL );
+                playlist_AddExt( p_playlist,
+                        (psz_URI != NULL) ? psz_URI : ppsz_argv[i_opt],
                         NULL, PLAYLIST_APPEND |
                         ( ( i_opt || p_data->enqueue ) ? 0 : PLAYLIST_GO ),
                         PLAYLIST_END, -1,
@@ -327,10 +314,10 @@ LRESULT CALLBACK WMCOPYWNDPROC( HWND hwnd, UINT uMsg, WPARAM wParam,
     return DefWindowProc( hwnd, uMsg, wParam, lParam );
 }
 
-/*****************************************************************************
- * system_End: terminate winsock.
- *****************************************************************************/
-void system_End( void )
+/**
+ * Cleans up after system_Init() and system_Configure().
+ */
+void system_End(void)
 {
     HWND ipcwindow;
 
@@ -345,9 +332,8 @@ void system_End( void )
         p_helper = NULL;
     }
 
-#if !defined( UNDER_CE )
     timeEndPeriod(5);
-#endif
 
+    /* XXX: In theory, we should not call this if WSAStartup() failed. */
     WSACleanup();
 }

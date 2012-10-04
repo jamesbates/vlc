@@ -2679,7 +2679,7 @@ msgstr "Előnyben részesített dekódolók listája"
 msgid ""
 "When several video formats are available, select one whose resolution is "
 "closest to (but not higher than) this setting, in number of lines. Use this "
-"option if you don't have enough CPU power or network bandwith to play higher "
+"option if you don't have enough CPU power or network bandwidth to play higher "
 "resolutions."
 msgstr ""
 
@@ -30903,13 +30903,6 @@ msgstr "&Sorba állítás"
 #, fuzzy
 #~ msgid "Automate picture coding mode"
 #~ msgstr "Képkódolási mód"
-
-#~ msgid ""
-#~ "This is the relative default size of the fonts that will be rendered on "
-#~ "the video. If absolute font size is set, relative size will be overriden."
-#~ msgstr ""
-#~ "Ez a képen megjelenítendő betűk alapértelmezett viszonylagos mérete. Az "
-#~ "abszolút betűkészletméret felülbírálja a relatív méretet."
 
 #~ msgid "Use media key control when VLC is in background"
 #~ msgstr "Médiabillentyűs irányítás használata, ha a VLC a háttérben van"

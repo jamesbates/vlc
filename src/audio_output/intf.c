@@ -35,6 +35,7 @@
 #include <stdio.h>
 #include <stdlib.h>                            /* calloc(), malloc(), free() */
 #include <string.h>
+#include <math.h>
 
 #include <vlc_aout.h>
 #include "aout_internal.h"
@@ -59,97 +60,42 @@ static audio_output_t *findAout (vlc_object_t *obj)
 }
 #define findAout(o) findAout(VLC_OBJECT(o))
 
-/** Start a volume change transaction. */
-static void prepareVolume (vlc_object_t *obj, audio_output_t **aoutp,
-                           audio_volume_t *volp, bool *mutep)
-{
-    audio_output_t *aout = findAout (obj);
-
-    /* FIXME: we need interlocking even if aout does not exist! */
-    *aoutp = aout;
-    if (aout != NULL)
-    {
-        obj = VLC_OBJECT(aout); /* use aout volume if aout exists */
-        aout_lock_volume (aout);
-    }
-    if (volp != NULL)
-        *volp = var_InheritInteger (obj, "volume");
-    if (mutep != NULL)
-        *mutep = var_InheritBool (obj, "mute");
-}
-
-/** Commit a volume change transaction. */
-static int commitVolume (vlc_object_t *obj, audio_output_t *aout,
-                         audio_volume_t volume, bool mute)
-{
-    int ret = 0;
-
-    /* update caller (input manager) volume */
-    var_SetInteger (obj, "volume", volume);
-    var_SetBool (obj, "mute", mute);
-    if (var_InheritBool (obj, "volume-save"))
-        config_PutInt (obj, "volume", volume);
-
-    if (aout != NULL)
-    {
-        aout_owner_t *owner = aout_owner (aout);
-        float vol = volume / (float)AOUT_VOLUME_DEFAULT;
-
-        /* apply volume to the pipeline */
-        aout_lock (aout);
-        if (owner->module != NULL)
-            ret = aout->pf_volume_set (aout, vol, mute);
-        aout_unlock (aout);
-
-        /* update aout volume if it maintains its own */
-        var_SetInteger (aout, "volume", volume);
-        var_SetBool (aout, "mute", mute);
-        aout_unlock_volume (aout);
-
-        if (ret == 0)
-            var_TriggerCallback (aout, "intf-change");
-        vlc_object_release (aout);
-    }
-    return ret;
-}
-
-/** Cancel a volume change transaction. */
-static void cancelVolume (vlc_object_t *obj, audio_output_t *aout)
-{
-    (void) obj;
-    if (aout != NULL)
-    {
-        aout_unlock_volume (aout);
-        vlc_object_release (aout);
-    }
-}
-
 #undef aout_VolumeGet
 /**
  * Gets the volume of the output device (independent of mute).
+ * \return Current audio volume (0 = silent, 1 = nominal),
+ * or a strictly negative value if undefined.
  */
-audio_volume_t aout_VolumeGet (vlc_object_t *obj)
+float aout_VolumeGet (vlc_object_t *obj)
 {
-    audio_output_t *aout;
-    audio_volume_t volume;
+    audio_output_t *aout = findAout (obj);
+    if (aout == NULL)
+        return -1.f;
 
-    prepareVolume (obj, &aout, &volume, NULL);
-    cancelVolume (obj, aout);
+    float volume = var_GetFloat (aout, "volume");
+    vlc_object_release (aout);
     return volume;
 }
 
 #undef aout_VolumeSet
 /**
  * Sets the volume of the output device.
- * The mute status is not changed.
+ * \note The mute status is not changed.
  */
-int aout_VolumeSet (vlc_object_t *obj, audio_volume_t volume)
+int aout_VolumeSet (vlc_object_t *obj, float vol)
 {
-    audio_output_t *aout;
-    bool mute;
+    int ret = -1;
 
-    prepareVolume (obj, &aout, NULL, &mute);
-    return commitVolume (obj, aout, volume, mute);
+    audio_output_t *aout = findAout (obj);
+    if (aout != NULL)
+    {
+        aout_lock (aout);
+        if (aout->volume_set != NULL)
+            ret = aout->volume_set (aout, vol);
+        aout_unlock (aout);
+        vlc_object_release (aout);
+    }
+    return ret;
 }
 
 #undef aout_VolumeUp
@@ -158,75 +104,61 @@ int aout_VolumeSet (vlc_object_t *obj, audio_volume_t volume)
  * \param value how much to increase (> 0) or decrease (< 0) the volume
  * \param volp if non-NULL, will contain contain the resulting volume
  */
-int aout_VolumeUp (vlc_object_t *obj, int value, audio_volume_t *volp)
+int aout_VolumeUp (vlc_object_t *obj, int value, float *volp)
 {
-    audio_output_t *aout;
-    int ret;
-    audio_volume_t volume;
-    bool mute;
-
     value *= var_InheritInteger (obj, "volume-step");
 
-    prepareVolume (obj, &aout, &volume, &mute);
-    value += volume;
-    if (value < 0)
-        volume = 0;
-    else
-    if (value > AOUT_VOLUME_MAX)
-        volume = AOUT_VOLUME_MAX;
-    else
-        volume = value;
-    ret = commitVolume (obj, aout, volume, mute);
+    float vol = aout_VolumeGet (obj);
+    if (vol < 0.)
+        return -1;
+
+    vol += value / (float)AOUT_VOLUME_DEFAULT;
+    if (vol < 0.)
+        vol = 0.;
+    if (vol > 2.)
+        vol = 2.;
     if (volp != NULL)
-        *volp = volume;
-    return ret;
+        *volp = vol;
+
+    return aout_VolumeSet (obj, vol);
 }
 
-#undef aout_ToggleMute
-/**
- * Toggles the mute state.
- */
-int aout_ToggleMute (vlc_object_t *obj, audio_volume_t *volp)
-{
-    audio_output_t *aout;
-    int ret;
-    audio_volume_t volume;
-    bool mute;
-
-    prepareVolume (obj, &aout, &volume, &mute);
-    mute = !mute;
-    ret = commitVolume (obj, aout, volume, mute);
-    if (volp != NULL)
-        *volp = mute ? 0 : volume;
-    return ret;
-}
-
+#undef aout_MuteGet
 /**
  * Gets the output mute status.
+ * \return 0 if not muted, 1 if muted, -1 if undefined.
  */
-bool aout_IsMuted (vlc_object_t *obj)
+int aout_MuteGet (vlc_object_t *obj)
 {
-    audio_output_t *aout;
-    bool mute;
+    audio_output_t *aout = findAout (obj);
+    if (aout == NULL)
+        return -1.f;
 
-    prepareVolume (obj, &aout, NULL, &mute);
-    cancelVolume (obj, aout);
+    bool mute = var_InheritBool (aout, "mute");
+    vlc_object_release (aout);
     return mute;
 }
 
+#undef aout_MuteSet
 /**
  * Sets mute status.
  */
-int aout_SetMute (vlc_object_t *obj, audio_volume_t *volp, bool mute)
+int aout_MuteSet (vlc_object_t *obj, bool mute)
 {
-    audio_output_t *aout;
-    int ret;
-    audio_volume_t volume;
+    int ret = -1;
 
-    prepareVolume (obj, &aout, &volume, NULL);
-    ret = commitVolume (obj, aout, volume, mute);
-    if (volp != NULL)
-        *volp = mute ? 0 : volume;
+    audio_output_t *aout = findAout (obj);
+    if (aout != NULL)
+    {
+        aout_lock (aout);
+        if (aout->mute_set != NULL)
+            ret = aout->mute_set (aout, mute);
+        aout_unlock (aout);
+        vlc_object_release (aout);
+    }
+
+    if (ret == 0)
+        var_SetBool (obj, "mute", mute);
     return ret;
 }
 
@@ -249,7 +181,7 @@ int aout_ChannelsRestart( vlc_object_t * p_this, const char * psz_variable,
     {
         /* This is supposed to be a significant change and supposes
          * rebuilding the channel choices. */
-        var_Destroy( p_aout, "audio-channels" );
+        var_Destroy( p_aout, "stereo-mode" );
     }
     aout_RequestRestart (p_aout);
     return 0;

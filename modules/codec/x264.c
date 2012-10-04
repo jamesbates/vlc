@@ -459,7 +459,7 @@ vlc_module_begin ()
 #if X264_BUILD >= 102 && X264_BUILD <= 114
     add_string( SOUT_CFG_PREFIX "opengop", "none", OPENGOP_TEXT,
                OPENGOP_LONGTEXT, true )
-        change_string_list( x264_open_gop_names, x264_open_gop_names, 0 );
+        change_string_list( x264_open_gop_names, x264_open_gop_names )
 #elif X264_BUILD > 114
     add_bool( SOUT_CFG_PREFIX "opengop", false, OPENGOP_TEXT,
                OPENGOP_LONGTEXT, true )
@@ -492,7 +492,7 @@ vlc_module_begin ()
     add_string( SOUT_CFG_PREFIX "bpyramid", "none", BPYRAMID_TEXT,
               BPYRAMID_LONGTEXT, true )
 #endif
-        change_string_list( bpyramid_list, bpyramid_list, 0 );
+        change_string_list( bpyramid_list, bpyramid_list )
 
     add_bool( SOUT_CFG_PREFIX "cabac", true, CABAC_TEXT, CABAC_LONGTEXT,
               true )
@@ -517,7 +517,10 @@ vlc_module_begin ()
 
     add_string( SOUT_CFG_PREFIX "profile", "high", PROFILE_TEXT,
                PROFILE_LONGTEXT, false )
-        change_string_list( x264_profile_names, x264_profile_names, 0 );
+        vlc_config_set (VLC_CONFIG_LIST,
+            (sizeof(x264_profile_names) / sizeof (char*)) - 1,
+            x264_profile_names, x264_profile_names);
+
 
     add_bool( SOUT_CFG_PREFIX "interlaced", false, INTERLACED_TEXT, INTERLACED_LONGTEXT,
               true )
@@ -534,7 +537,9 @@ vlc_module_begin ()
 
 #if X264_BUILD >= 89
     add_string( SOUT_CFG_PREFIX "hrd", "none", HRD_TEXT, HRD_TEXT, true )
-        change_string_list( x264_nal_hrd_names, x264_nal_hrd_names, 0 );
+        vlc_config_set (VLC_CONFIG_LIST,
+            (sizeof(x264_nal_hrd_names) / sizeof (char*)) - 1,
+            x264_nal_hrd_names, x264_nal_hrd_names);
 #endif
 
 
@@ -610,11 +615,11 @@ vlc_module_begin ()
     /* x264 partitions = none (default). set at least "normal" mode. */
     add_string( SOUT_CFG_PREFIX "partitions", "normal", ANALYSE_TEXT,
                 ANALYSE_LONGTEXT, true )
-        change_string_list( enc_analyse_list, enc_analyse_list_text, 0 );
+        change_string_list( enc_analyse_list, enc_analyse_list_text )
 
     add_string( SOUT_CFG_PREFIX "direct", "spatial", DIRECT_PRED_TEXT,
                 DIRECT_PRED_LONGTEXT, true )
-        change_string_list( direct_pred_list, direct_pred_list_text, 0 );
+        change_string_list( direct_pred_list, direct_pred_list_text )
 
     add_integer( SOUT_CFG_PREFIX "direct-8x8", 1, DIRECT_PRED_SIZE_TEXT,
                  DIRECT_PRED_SIZE_LONGTEXT, true )
@@ -629,7 +634,7 @@ vlc_module_begin ()
 
     add_string( SOUT_CFG_PREFIX "me", "hex", ME_TEXT,
                 ME_LONGTEXT, true )
-        change_string_list( enc_me_list, enc_me_list_text, 0 );
+        change_string_list( enc_me_list, enc_me_list_text )
 
     add_integer( SOUT_CFG_PREFIX "merange", 16, MERANGE_TEXT,
                  MERANGE_LONGTEXT, true )
@@ -720,9 +725,13 @@ vlc_module_begin ()
                 STATS_LONGTEXT, true )
 
     add_string( SOUT_CFG_PREFIX "preset", NULL , PRESET_TEXT , PRESET_TEXT, false )
-        change_string_list( x264_preset_names, x264_preset_names, 0 );
+        vlc_config_set (VLC_CONFIG_LIST,
+            (sizeof(x264_preset_names) / sizeof (char*)) - 1,
+            x264_preset_names, x264_preset_names);
     add_string( SOUT_CFG_PREFIX "tune", NULL , TUNE_TEXT, TUNE_TEXT, false )
-        change_string_list( x264_tune_names, x264_tune_names, 0 );
+        vlc_config_set (VLC_CONFIG_LIST,
+            (sizeof(x264_tune_names) / sizeof (char*)) - 1,
+            x264_tune_names, x264_tune_names);
 
     add_string( SOUT_CFG_PREFIX "options", NULL, X264_OPTIONS_TEXT,
                 X264_OPTIONS_LONGTEXT, true )
@@ -1238,7 +1247,7 @@ static int  Open ( vlc_object_t *p_this )
         p_sys->param.i_fps_den = p_enc->fmt_in.video.i_frame_rate_base;
         p_sys->param.i_timebase_num = 1;
         p_sys->param.i_timebase_den = INT64_C(1000000);
-        p_sys->param.b_vfr_input = 1;
+        p_sys->param.b_vfr_input = 0;
     }
 
     /* Check slice-options */
@@ -1259,24 +1268,16 @@ static int  Open ( vlc_object_t *p_this )
         x264_param_apply_profile( &p_sys->param, psz_val );
     free( psz_val );
 
-
-    unsigned i_cpu = vlc_CPU();
-    if( !(i_cpu & CPU_CAPABILITY_MMX) )
-    {
+#if defined (__i386__) || defined (__x86_64__)
+    if( !vlc_CPU_MMX() )
         p_sys->param.cpu &= ~X264_CPU_MMX;
-    }
-    if( !(i_cpu & CPU_CAPABILITY_MMXEXT) )
-    {
+    if( !vlc_CPU_MMXEXT() )
         p_sys->param.cpu &= ~X264_CPU_MMXEXT;
-    }
-    if( !(i_cpu & CPU_CAPABILITY_SSE) )
-    {
+    if( !vlc_CPU_SSE() )
         p_sys->param.cpu &= ~X264_CPU_SSE;
-    }
-    if( !(i_cpu & CPU_CAPABILITY_SSE2) )
-    {
+    if( !vlc_CPU_SSE2() )
         p_sys->param.cpu &= ~X264_CPU_SSE2;
-    }
+#endif
 
     /* BUILD 29 adds support for multi-threaded encoding while BUILD 49 (r543)
        also adds support for threads = 0 for automatically selecting an optimal

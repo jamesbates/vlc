@@ -31,6 +31,7 @@
 #include "playlist_model.hpp"                /* plMimeData */
 #include "input_manager.hpp"                 /* MainInputManager, for podcast */
 
+#include <QApplication>
 #include <QInputDialog>
 #include <QMessageBox>
 #include <QMimeData>
@@ -39,6 +40,8 @@
 #include <QHBoxLayout>
 #include <QPainter>
 #include <QPalette>
+#include <QScrollBar>
+#include <assert.h>
 
 #include <vlc_playlist.h>
 #include <vlc_services_discovery.h>
@@ -140,6 +143,10 @@ PLSelector::PLSelector( QWidget *p, intf_thread_t *_p_intf )
 
     createItems();
 
+    /* Expand at least to show level 2 */
+    for ( int i = 0; i < topLevelItemCount(); i++ )
+        expandItem( topLevelItem( i ) );
+
     /***
      * We need to react to both clicks and activation (enter-key) here.
      * We use curItem to avoid rebuilding twice.
@@ -204,6 +211,13 @@ void PLSelector::createItems()
     QTreeWidgetItem *devices = addItem( CATEGORY_TYPE, N_("Devices") )->treeItem();
     QTreeWidgetItem *lan = addItem( CATEGORY_TYPE, N_("Local Network") )->treeItem();
     QTreeWidgetItem *internet = addItem( CATEGORY_TYPE, N_("Internet") )->treeItem();
+
+#define NOT_SELECTABLE(w) w->setFlags( w->flags() ^ Qt::ItemIsSelectable );
+    NOT_SELECTABLE( mycomp );
+    NOT_SELECTABLE( devices );
+    NOT_SELECTABLE( lan );
+    NOT_SELECTABLE( internet );
+#undef NOT_SELECTABLE
 
     /* SD subnodes */
     char **ppsz_longnames;
@@ -290,6 +304,7 @@ void PLSelector::setSource( QTreeWidgetItem *item )
     else if( i_type == SQL_ML_TYPE )
     {
         emit categoryActivated( NULL, true );
+        curItem = item;
         return;
     }
 #endif
@@ -411,7 +426,7 @@ void PLSelector::dragMoveEvent ( QDragMoveEvent * event )
 
 void PLSelector::plItemAdded( int item, int parent )
 {
-    if( parent != podcastsParentId ) return;
+    if( parent != podcastsParentId || podcastsParent == NULL ) return;
 
     playlist_Lock( THEPL );
 
@@ -443,6 +458,8 @@ void PLSelector::plItemAdded( int item, int parent )
 
 void PLSelector::plItemRemoved( int id )
 {
+    if( !podcastsParent ) return;
+
     int c = podcastsParent->childCount();
     for( int i = 0; i < c; i++ )
     {
@@ -460,6 +477,9 @@ void PLSelector::plItemRemoved( int id )
 
 void PLSelector::inputItemUpdate( input_item_t *arg )
 {
+    if( podcastsParent == NULL )
+        return;
+
     int c = podcastsParent->childCount();
     for( int i = 0; i < c; i++ )
     {
@@ -478,6 +498,8 @@ void PLSelector::inputItemUpdate( input_item_t *arg )
 
 void PLSelector::podcastAdd( PLSelItem * )
 {
+    assert( podcastsParent );
+
     bool ok;
     QString url = QInputDialog::getText( this, qtr( "Subscribe" ),
                                          qtr( "Enter URL of the podcast to subscribe to:" ),
@@ -501,9 +523,9 @@ void PLSelector::podcastRemove( PLSelItem* item )
     question = question.arg( item->text() );
     QMessageBox::StandardButton res =
         QMessageBox::question( this, qtr( "Unsubscribe" ), question,
-                               QMessageBox::Ok | QMessageBox::Cancel,
-                               QMessageBox::Cancel );
-    if( res == QMessageBox::Cancel ) return;
+                               QMessageBox::Yes | QMessageBox::No,
+                               QMessageBox::No );
+    if( res == QMessageBox::No ) return;
 
     input_item_t *input = item->treeItem()->data( 0, IN_ITEM_ROLE ).value<input_item_t*>();
     if( !input ) return;
@@ -550,6 +572,12 @@ int PLSelector::getCurrentItemCategory()
 
 void PLSelector::wheelEvent( QWheelEvent *e )
 {
+    if( verticalScrollBar()->isVisible() && (
+        (verticalScrollBar()->value() != verticalScrollBar()->minimum() && e->delta() >= 0 ) ||
+        (verticalScrollBar()->value() != verticalScrollBar()->maximum() && e->delta() < 0 )
+        ) )
+        QApplication::sendEvent(verticalScrollBar(), e);
+
     // Accept this event in order to prevent unwanted volume up/down changes
     e->accept();
 }

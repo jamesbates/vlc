@@ -37,6 +37,7 @@
 /* Needed by str_format_time */
 #include <time.h>
 #include <limits.h>
+#include <math.h>
 
 /* Needed by str_format_meta */
 #include <vlc_input.h>
@@ -45,124 +46,10 @@
 #include <vlc_aout_intf.h>
 
 #include <vlc_strings.h>
-#include <vlc_url.h>
 #include <vlc_charset.h>
 #include <vlc_fs.h>
 #include <libvlc.h>
 #include <errno.h>
-
-/**
- * Decode encoded URI component. See also decode_URI().
- * \return decoded duplicated string
- */
-char *decode_URI_duplicate( const char *psz )
-{
-    char *psz_dup = strdup( psz );
-    decode_URI( psz_dup );
-    return psz_dup;
-}
-
-/**
- * Decode an encoded URI component in place.
- * <b>This function does NOT decode entire URIs.</b>
- * It decodes components (e.g. host name, directory, file name).
- * Decoded URIs do not exist in the real world (see RFC3986 §2.4).
- * Complete URIs are always "encoded" (or they are syntaxically invalid).
- *
- * Note that URI encoding is different from Javascript escaping. Especially,
- * white spaces and Unicode non-ASCII code points are encoded differently.
- *
- * \return psz on success, NULL if it was not properly encoded
- */
-char *decode_URI( char *psz )
-{
-    unsigned char *in = (unsigned char *)psz, *out = in, c;
-
-    if( psz == NULL )
-        return NULL;
-
-    while( ( c = *in++ ) != '\0' )
-    {
-        switch( c )
-        {
-            case '%':
-            {
-                char hex[3];
-
-                if( ( ( hex[0] = *in++ ) == 0 )
-                 || ( ( hex[1] = *in++ ) == 0 ) )
-                    return NULL;
-
-                hex[2] = '\0';
-                *out++ = (unsigned char)strtoul( hex, NULL, 0x10 );
-                break;
-            }
-
-            default:
-                /* Inserting non-ASCII or non-printable characters is unsafe,
-                 * and no sane browser will send these unencoded */
-                if( ( c < 32 ) || ( c > 127 ) )
-                    *out++ = '?';
-                else
-                    *out++ = c;
-        }
-    }
-    *out = '\0';
-    return psz;
-}
-
-static inline bool isurisafe( int c )
-{
-    /* These are the _unreserved_ URI characters (RFC3986 §2.3) */
-    return ( (unsigned char)( c - 'a' ) < 26 )
-            || ( (unsigned char)( c - 'A' ) < 26 )
-            || ( (unsigned char)( c - '0' ) < 10 )
-            || ( strchr( "-._~", c ) != NULL );
-}
-
-static char *encode_URI_bytes (const char *psz_uri, size_t len)
-{
-    char *psz_enc = malloc (3 * len + 1), *out = psz_enc;
-    if (psz_enc == NULL)
-        return NULL;
-
-    for (size_t i = 0; i < len; i++)
-    {
-        static const char hex[16] = "0123456789ABCDEF";
-        uint8_t c = *psz_uri;
-
-        if( isurisafe( c ) )
-            *out++ = c;
-        /* This is URI encoding, not HTTP forms:
-         * Space is encoded as '%20', not '+'. */
-        else
-        {
-            *out++ = '%';
-            *out++ = hex[c >> 4];
-            *out++ = hex[c & 0xf];
-        }
-        psz_uri++;
-    }
-    *out++ = '\0';
-
-    out = realloc (psz_enc, out - psz_enc);
-    return out ? out : psz_enc; /* realloc() can fail (safe) */
-}
-
-/**
- * Encodes a URI component (RFC3986 §2).
- *
- * @param psz_uri nul-terminated UTF-8 representation of the component.
- * Obviously, you can't pass a URI containing a nul character, but you don't
- * want to do that, do you?
- *
- * @return encoded string (must be free()'d), or NULL for ENOMEM.
- */
-char *encode_URI_component( const char *psz_uri )
-{
-    return encode_URI_bytes (psz_uri, strlen (psz_uri));
-}
-
 
 static const struct xml_entity_s
 {
@@ -528,7 +415,7 @@ size_t vlc_b64_decode_binary_to_buffer( uint8_t *p_dst, size_t i_dst, const char
     {
         const int c = b64[(unsigned int)*p];
         if( c == -1 )
-            continue;
+            break;
 
         switch( i_level )
         {
@@ -640,8 +527,7 @@ static void format_duration (char *buf, size_t len, int64_t duration)
                         memcpy( dst+d, string, len );               \
                         d += len;                                   \
                     }
-#undef str_format_meta
-char *str_format_meta( vlc_object_t *p_object, const char *string )
+char *str_format_meta( playlist_t *p_object, const char *string )
 {
     const char *s = string;
     bool b_is_format = false;
@@ -652,7 +538,7 @@ char *str_format_meta( vlc_object_t *p_object, const char *string )
     if( !dst ) return NULL;
     int d = 0;
 
-    input_thread_t *p_input = playlist_CurrentInput( pl_Get(p_object) );
+    input_thread_t *p_input = playlist_CurrentInput( p_object );
     input_item_t *p_item = NULL;
     if( p_input )
     {
@@ -889,12 +775,18 @@ char *str_format_meta( vlc_object_t *p_object, const char *string )
                     }
                     break;
                 case 'V':
+                {
+                    float vol = aout_VolumeGet( p_object );
+                    if( vol >= 0. )
                     {
-                        audio_volume_t volume = aout_VolumeGet( p_object );
-                        snprintf( buf, 10, "%d", volume );
+                        snprintf( buf, 10, "%ld",
+                                  lroundf(vol * AOUT_VOLUME_DEFAULT ) );
                         INSERT_STRING_NO_FREE( buf );
-                        break;
                     }
+                    else
+                         INSERT_STRING_NO_FREE( "---" );
+                    break;
+                }
                 case '_':
                     *(dst+d) = '\n';
                     d++;
@@ -903,17 +795,17 @@ char *str_format_meta( vlc_object_t *p_object, const char *string )
                     if( p_item )
                     {
                         char *psz_now_playing = input_item_GetNowPlaying( p_item );
-                        if ( psz_now_playing == NULL )
+                        if( EMPTY_STR( psz_now_playing ) )
                         {
                             char *psz_temp = input_item_GetTitleFbName( p_item );
                             char *psz_artist = input_item_GetArtist( p_item );
-                            if( !EMPTY_STR( psz_temp ) )
+                            if( !EMPTY_STR( psz_artist ) )
                             {
-                                INSERT_STRING( psz_temp );
-                                if ( !EMPTY_STR( psz_artist ) )
+                                INSERT_STRING( psz_artist );
+                                if ( !EMPTY_STR( psz_temp ) )
                                     INSERT_STRING_NO_FREE( " - " );
                             }
-                            INSERT_STRING( psz_artist );
+                            INSERT_STRING( psz_temp );
                         }
                         else
                             INSERT_STRING( psz_now_playing );
@@ -953,19 +845,6 @@ char *str_format_meta( vlc_object_t *p_object, const char *string )
 }
 #undef INSERT_STRING
 #undef INSERT_STRING_NO_FREE
-
-#undef str_format
-/**
- * Apply str format time and str format meta
- */
-char *str_format( vlc_object_t *p_this, const char *psz_src )
-{
-    char *psz_buf1, *psz_buf2;
-    psz_buf1 = str_format_time( psz_src );
-    psz_buf2 = str_format_meta( p_this, psz_buf1 );
-    free( psz_buf1 );
-    return psz_buf2;
-}
 
 /**
  * Remove forbidden, potentially forbidden and otherwise evil characters from
@@ -1048,235 +927,6 @@ void path_sanitize( char *str )
 #endif
         str++;
     }
-}
-
-#include <vlc_url.h>
-#ifdef WIN32
-# include <io.h>
-#endif
-
-/**
- * Convert a file path to a URI.
- * If already a URI, return a copy of the string.
- * @param path path to convert (or URI to copy)
- * @param scheme URI scheme to use (default is auto: "file", "fd" or "smb")
- * @return a nul-terminated URI string (use free() to release it),
- * or NULL in case of error
- */
-char *make_URI (const char *path, const char *scheme)
-{
-    if (path == NULL)
-        return NULL;
-    if (scheme == NULL && !strcmp (path, "-"))
-        return strdup ("fd://0"); // standard input
-    if (strstr (path, "://") != NULL)
-        return strdup (path); /* Already a URI */
-    /* Note: VLC cannot handle URI schemes without double slash after the
-     * scheme name (such as mailto: or news:). */
-
-    char *buf;
-
-#ifdef __OS2__
-    char p[strlen (path) + 1];
-
-    for (buf = p; *path; buf++, path++)
-        *buf = (*path == '/') ? DIR_SEP_CHAR : *path;
-    *buf = '\0';
-
-    path = p;
-#endif
-
-#if defined( WIN32 ) || defined( __OS2__ )
-    /* Drive letter */
-    if (isalpha ((unsigned char)path[0]) && (path[1] == ':'))
-    {
-        if (asprintf (&buf, "%s:///%c:", scheme ? scheme : "file",
-                      path[0]) == -1)
-            buf = NULL;
-        path += 2;
-# warning Drive letter-relative path not implemented!
-        if (path[0] != DIR_SEP_CHAR)
-            return NULL;
-    }
-    else
-#endif
-    if (!strncmp (path, "\\\\", 2))
-    {   /* Windows UNC paths */
-#if !defined( WIN32 ) && !defined( __OS2__ )
-        if (scheme != NULL)
-            return NULL; /* remote files not supported */
-
-        /* \\host\share\path -> smb://host/share/path */
-        if (strchr (path + 2, '\\') != NULL)
-        {   /* Convert backslashes to slashes */
-            char *dup = strdup (path);
-            if (dup == NULL)
-                return NULL;
-            for (size_t i = 2; dup[i]; i++)
-                if (dup[i] == '\\')
-                    dup[i] = DIR_SEP_CHAR;
-
-            char *ret = make_URI (dup, scheme);
-            free (dup);
-            return ret;
-        }
-# define SMB_SCHEME "smb"
-#else
-        /* \\host\share\path -> file://host/share/path */
-# define SMB_SCHEME "file"
-#endif
-        size_t hostlen = strcspn (path + 2, DIR_SEP);
-
-        buf = malloc (sizeof (SMB_SCHEME) + 3 + hostlen);
-        if (buf != NULL)
-            snprintf (buf, sizeof (SMB_SCHEME) + 3 + hostlen,
-                      SMB_SCHEME"://%s", path + 2);
-        path += 2 + hostlen;
-
-        if (path[0] == '\0')
-            return buf; /* Hostname without path */
-    }
-    else
-    if (path[0] != DIR_SEP_CHAR)
-    {   /* Relative path: prepend the current working directory */
-        char *cwd, *ret;
-
-        if ((cwd = vlc_getcwd ()) == NULL)
-            return NULL;
-        if (asprintf (&buf, "%s"DIR_SEP"%s", cwd, path) == -1)
-            buf = NULL;
-
-        free (cwd);
-        ret = (buf != NULL) ? make_URI (buf, scheme) : NULL;
-        free (buf);
-        return ret;
-    }
-    else
-    if (asprintf (&buf, "%s://", scheme ? scheme : "file") == -1)
-        buf = NULL;
-    if (buf == NULL)
-        return NULL;
-
-    assert (path[0] == DIR_SEP_CHAR);
-
-    /* Absolute file path */
-    for (const char *ptr = path + 1;; ptr++)
-    {
-        size_t len = strcspn (ptr, DIR_SEP);
-        char *component = encode_URI_bytes (ptr, len);
-        if (component == NULL)
-        {
-            free (buf);
-            return NULL;
-        }
-        char *uri;
-        int val = asprintf (&uri, "%s/%s", buf, component);
-        free (component);
-        free (buf);
-        if (val == -1)
-            return NULL;
-        buf = uri;
-        ptr += len;
-        if (*ptr == '\0')
-            return buf;
-    }
-}
-
-/**
- * Tries to convert a URI to a local (UTF-8-encoded) file path.
- * @param url URI to convert
- * @return NULL on error, a nul-terminated string otherwise
- * (use free() to release it)
- */
-char *make_path (const char *url)
-{
-    char *ret = NULL;
-    char *end;
-
-    char *path = strstr (url, "://");
-    if (path == NULL)
-        return NULL; /* unsupported scheme or invalid syntax */
-
-    end = memchr (url, '/', path - url);
-    size_t schemelen = ((end != NULL) ? end : path) - url;
-    path += 3; /* skip "://" */
-
-    /* Remove HTML anchor if present */
-    end = strchr (path, '#');
-    if (end)
-        path = strndup (path, end - path);
-    else
-        path = strdup (path);
-    if (unlikely(path == NULL))
-        return NULL; /* boom! */
-
-    /* Decode path */
-    decode_URI (path);
-
-    if (schemelen == 4 && !strncasecmp (url, "file", 4))
-    {
-#if (!defined (WIN32) && !defined (__OS2__)) || defined (UNDER_CE)
-        /* Leading slash => local path */
-        if (*path == '/')
-            return path;
-        /* Local path disguised as a remote one */
-        if (!strncasecmp (path, "localhost/", 10))
-            return memmove (path, path + 9, strlen (path + 9) + 1);
-#else
-        /* cannot start with a space */
-        if (*path == ' ')
-            goto out;
-        for (char *p = strchr (path, '/'); p; p = strchr (p + 1, '/'))
-            *p = '\\';
-
-        /* Leading backslash => local path */
-        if (*path == '\\')
-            return memmove (path, path + 1, strlen (path + 1) + 1);
-        /* Local path disguised as a remote one */
-        if (!strncasecmp (path, "localhost\\", 10))
-            return memmove (path, path + 10, strlen (path + 10) + 1);
-        /* UNC path */
-        if (*path && asprintf (&ret, "\\\\%s", path) == -1)
-            ret = NULL;
-#endif
-        /* non-local path :-( */
-    }
-    else
-    if (schemelen == 2 && !strncasecmp (url, "fd", 2))
-    {
-        int fd = strtol (path, &end, 0);
-
-        if (*end)
-            goto out;
-
-#if !defined( WIN32 ) && !defined( __OS2__ )
-        switch (fd)
-        {
-            case 0:
-                ret = strdup ("/dev/stdin");
-                break;
-            case 1:
-                ret = strdup ("/dev/stdout");
-                break;
-            case 2:
-                ret = strdup ("/dev/stderr");
-                break;
-            default:
-                if (asprintf (&ret, "/dev/fd/%d", fd) == -1)
-                    ret = NULL;
-        }
-#else
-        /* XXX: Does this work on WinCE? */
-        if (fd < 2)
-            ret = strdup ("CON");
-        else
-            ret = NULL;
-#endif
-    }
-
-out:
-    free (path);
-    return ret; /* unknown scheme */
 }
 
 /*

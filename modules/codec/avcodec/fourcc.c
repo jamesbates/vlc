@@ -29,15 +29,11 @@
 #include <vlc_common.h>
 #include <vlc_codec.h>
 
-#ifdef HAVE_LIBAVCODEC_AVCODEC_H
-#   include <libavcodec/avcodec.h>
-#else
-#   include <avcodec.h>
-#endif
+#include <libavcodec/avcodec.h>
 #include "avcodec.h"
 
 /*****************************************************************************
- * Codec fourcc -> ffmpeg_id mapping
+ * Codec fourcc -> libavcodec Codec_id mapping
  *****************************************************************************/
 static const struct
 {
@@ -224,6 +220,26 @@ static const struct
 
 #if LIBAVCODEC_VERSION_INT >= AV_VERSION_INT( 53, 42, 0 )
     { VLC_CODEC_DXTORY, CODEC_ID_DXTORY, VIDEO_ES },
+#endif
+
+#if LIBAVCODEC_VERSION_CHECK( 54, 16, 0, 27, 100 )
+    { VLC_CODEC_MSS1, CODEC_ID_MSS1, VIDEO_ES },
+#endif
+
+#if LIBAVCODEC_VERSION_CHECK( 54, 17, 0, 32, 100 )
+    { VLC_CODEC_MSA1, CODEC_ID_MSA1, VIDEO_ES },
+#endif
+
+#if LIBAVCODEC_VERSION_CHECK( 54, 18, 0, 34, 100 )
+    { VLC_CODEC_TSC2, CODEC_ID_TSCC2, VIDEO_ES },
+#endif
+
+#if LIBAVCODEC_VERSION_CHECK( 54, 20, 0, 37, 100 )
+    { VLC_CODEC_MTS2, CODEC_ID_MTS2, VIDEO_ES },
+#endif
+
+#if LIBAVCODEC_VERSION_CHECK( 54, 27, 0, 55, 100 )
+    { VLC_CODEC_MSS2, AV_CODEC_ID_MSS2, VIDEO_ES },
 #endif
 
     /* Videogames Codecs */
@@ -433,6 +449,9 @@ static const struct
     { VLC_CODEC_RALF, CODEC_ID_RALF, AUDIO_ES },
 #endif
 
+#if LIBAVCODEC_VERSION_CHECK( 54, 14, 0, 26, 100 )
+    { VLC_CODEC_INDEO_AUDIO, CODEC_ID_IAC, AUDIO_ES },
+#endif
 
     /* PCM */
     { VLC_CODEC_S8, CODEC_ID_PCM_S8, AUDIO_ES },

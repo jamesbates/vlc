@@ -32,13 +32,17 @@
 #include <string.h>
 #include <assert.h>
 
+#include <sys/types.h>
+#include <fcntl.h>
+
 #include <vlc_common.h>
 #include <vlc_plugin.h>
+#include <vlc_fs.h>
 
 #include "v4l2.h"
 
-#define DEVICE_TEXT N_( "Device" )
-#define DEVICE_LONGTEXT N_("Video device node." )
+#define VIDEO_DEVICE_TEXT N_( "Video capture device" )
+#define VIDEO_DEVICE_LONGTEXT N_("Video capture device node." )
 #define STANDARD_TEXT N_( "Standard" )
 #define STANDARD_LONGTEXT N_( \
     "Video standard (Default, SECAM, PAL, or NTSC)." )
@@ -59,9 +63,17 @@
 #define SIZE_LONGTEXT N_( \
     "The specified pixel resolution is forced " \
     "(if both width and height are strictly positive)." )
-#define FPS_TEXT N_( "Framerate" )
-#define FPS_LONGTEXT N_( "Framerate to capture, if applicable " \
-    "(0 for autodetect)." )
+/*#define FPS_TEXT N_( "Frame rate" )
+#define FPS_LONGTEXT N_( "Maximum frame rate to use (0 = no limits)." )*/
+
+#define RADIO_DEVICE_TEXT N_( "Radio device" )
+#define RADIO_DEVICE_LONGTEXT N_("Radio tuner device node." )
+#define FREQUENCY_TEXT N_("Frequency")
+#define FREQUENCY_LONGTEXT N_( \
+    "Tuner frequency in Hz or kHz (see debug output)" )
+#define TUNER_AUDIO_MODE_TEXT N_("Audio mode")
+#define TUNER_AUDIO_MODE_LONGTEXT N_( \
+    "Tuner audio mono/stereo and track selection." )
 
 #define CTRL_RESET_TEXT N_( "Reset controls" )
 #define CTRL_RESET_LONGTEXT N_( "Reset controls to defaults." )
@@ -177,16 +189,6 @@ static const char *const colorfx_user[] = { N_("Unspecified"), N_("None"),
     "To list available controls, increase verbosity (-vvv) " \
     "or use the v4l2-ctl application." )
 
-#define TUNER_TEXT N_("Tuner id")
-#define TUNER_LONGTEXT N_( \
-    "Tuner id (see debug output)." )
-#define FREQUENCY_TEXT N_("Frequency")
-#define FREQUENCY_LONGTEXT N_( \
-    "Tuner frequency in Hz or kHz (see debug output)" )
-#define TUNER_AUDIO_MODE_TEXT N_("Audio mode")
-#define TUNER_AUDIO_MODE_LONGTEXT N_( \
-    "Tuner audio mono/stereo and track selection." )
-
 #define ASPECT_TEXT N_("Picture aspect-ratio n:m")
 #define ASPECT_LONGTEXT N_("Define input picture aspect-ratio to use. Default is 4:3" )
 
@@ -266,18 +268,18 @@ static const char *const psz_tuner_audio_modes_list_text[] = {
 };
 
 vlc_module_begin ()
-    set_shortname( N_("Video4Linux2") )
-    set_description( N_("Video4Linux2 input") )
+    set_shortname( N_("V4L") )
+    set_description( N_("Video4Linux input") )
     set_category( CAT_INPUT )
     set_subcategory( SUBCAT_INPUT_ACCESS )
 
     set_section( N_( "Video input" ), NULL )
     add_loadfile( CFG_PREFIX "dev", "/dev/video0",
-                  DEVICE_TEXT, DEVICE_LONGTEXT, false )
+                  VIDEO_DEVICE_TEXT, VIDEO_DEVICE_LONGTEXT, false )
         change_safe()
     add_string( CFG_PREFIX "standard", "",
                 STANDARD_TEXT, STANDARD_LONGTEXT, false )
-        change_string_list( standards_vlc, standards_user, NULL )
+        change_string_list( standards_vlc, standards_user )
         change_safe()
     add_string( CFG_PREFIX "chroma", NULL, CHROMA_TEXT, CHROMA_LONGTEXT,
                 true )
@@ -300,11 +302,15 @@ vlc_module_begin ()
     add_string( CFG_PREFIX "aspect-ratio", "4:3", ASPECT_TEXT,
               ASPECT_LONGTEXT, true )
         change_safe()
-    add_float( CFG_PREFIX "fps", 0, FPS_TEXT, FPS_LONGTEXT, true )
-        change_safe()
+    /*add_float( CFG_PREFIX "fps", 0, FPS_TEXT, FPS_LONGTEXT, true )*/
+    add_obsolete_float( CFG_PREFIX "fps" )
+        change_safe() /* since 2.1.0 */
     add_obsolete_bool( CFG_PREFIX "use-libv4l2" ) /* since 2.1.0 */
 
     set_section( N_( "Tuner" ), NULL )
+    add_loadfile( CFG_PREFIX "radio-dev", "/dev/radio0",
+                  RADIO_DEVICE_TEXT, RADIO_DEVICE_LONGTEXT, false )
+        change_safe()
     add_obsolete_integer( CFG_PREFIX "tuner" ) /* since 2.1.0 */
     add_integer( CFG_PREFIX "tuner-frequency", -1, FREQUENCY_TEXT,
                  FREQUENCY_LONGTEXT, true )
@@ -402,16 +408,22 @@ vlc_module_begin ()
     add_obsolete_bool( CFG_PREFIX "stereo" )
     add_obsolete_integer( CFG_PREFIX "samplerate" )
 
-    add_shortcut( "v4l2" )
+    add_shortcut( "v4l", "v4l2" )
     set_capability( "access_demux", 0 )
     set_callbacks( DemuxOpen, DemuxClose )
 
     add_submodule ()
-    add_shortcut( "v4l2", "v4l2c" )
-    set_description( N_("Video4Linux2 Compressed A/V") )
+    add_shortcut( "v4l", "v4l2", "v4l2c" )
+    set_description( N_("Video4Linux compressed A/V input") )
     set_capability( "access", 0 )
     /* use these when open as access_demux fails; VLC will use another demux */
     set_callbacks( AccessOpen, AccessClose )
+
+    add_submodule ()
+    add_shortcut ("radio" /*, "fm", "am" */)
+    set_description (N_("Video4Linux radio tuner"))
+    set_capability ("access_demux", 0)
+    set_callbacks (RadioOpen, RadioClose)
 
 vlc_module_end ()
 
@@ -441,6 +453,53 @@ void ParseMRL( vlc_object_t *obj, const char *mrl )
         var_SetString( obj, CFG_PREFIX"dev", dev );
         free( dev );
     }
+}
+
+int OpenDevice (vlc_object_t *obj, const char *path, uint32_t *restrict caps)
+{
+    msg_Dbg (obj, "opening device '%s'", path);
+
+    int rawfd = vlc_open (path, O_RDWR);
+    if (rawfd == -1)
+    {
+        msg_Err (obj, "cannot open device '%s': %m", path);
+        return -1;
+    }
+
+    int fd = v4l2_fd_open (rawfd, 0);
+    if (fd == -1)
+    {
+        msg_Warn (obj, "cannot initialize user-space library: %m");
+        /* fallback to direct kernel mode anyway */
+        fd = rawfd;
+    }
+
+    /* Get device capabilites */
+    struct v4l2_capability cap;
+    if (v4l2_ioctl (fd, VIDIOC_QUERYCAP, &cap) < 0)
+    {
+        msg_Err (obj, "cannot get device capabilities: %m");
+        v4l2_close (fd);
+        return -1;
+    }
+
+    msg_Dbg (obj, "device %s using driver %s (version %u.%u.%u) on %s",
+            cap.card, cap.driver, (cap.version >> 16) & 0xFF,
+            (cap.version >> 8) & 0xFF, cap.version & 0xFF, cap.bus_info);
+
+    if (cap.capabilities & V4L2_CAP_DEVICE_CAPS)
+    {
+        msg_Dbg (obj, " with capabilities 0x%08"PRIX32" "
+                 "(overall 0x%08"PRIX32")", cap.device_caps, cap.capabilities);
+        *caps = cap.device_caps;
+    }
+    else
+    {
+        msg_Dbg (obj, " with unknown capabilities  "
+                 "(overall 0x%08"PRIX32")", cap.capabilities);
+        *caps = cap.capabilities;
+    }
+    return fd;
 }
 
 v4l2_std_id var_InheritStandard (vlc_object_t *obj, const char *varname)

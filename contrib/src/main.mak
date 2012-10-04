@@ -100,47 +100,26 @@ endif
 endif
 
 ifdef HAVE_ANDROID
-CC :=  $(HOST)-gcc --sysroot=$(ANDROID_NDK)/platforms/android-9/arch-arm
-CXX := $(HOST)-g++ --sysroot=$(ANDROID_NDK)/platforms/android-9/arch-arm
-ifdef HAVE_NEON
-    ANDROID_ABI = armeabi-v7a
-    ANDROID_CPU_FLAGS = -mfpu=neon -mcpu=cortex-a8
-else
-ifdef HAVE_TEGRA2
-    ANDROID_ABI = armeabi-v7a
-    ANDROID_CPU_FLAGS = -mfpu=vfpv3-d16 -mcpu=cortex-a9
-else
-    ANDROID_ABI = armeabi
-    ANDROID_CPU_FLAGS = -mcpu=arm1136jf-s -mfpu=vfp
-endif
-endif
-EXTRA_CFLAGS += -I$(ANDROID_NDK)/sources/cxx-stl/gnu-libstdc++/include
-EXTRA_CFLAGS += -I$(ANDROID_NDK)/sources/cxx-stl/gnu-libstdc++/libs/$(ANDROID_ABI)/include
-EXTRA_CFLAGS += -mfloat-abi=softfp $(ANDROID_CPU_FLAGS)
+CC :=  $(HOST)-gcc --sysroot=$(ANDROID_NDK)/platforms/android-9/arch-$(PLATFORM_SHORT_ARCH)
+CXX := $(HOST)-g++ --sysroot=$(ANDROID_NDK)/platforms/android-9/arch-$(PLATFORM_SHORT_ARCH)
 endif
 
 ifdef HAVE_MACOSX
-MIN_OSX_VERSION=10.5
-MACOSX_SDK=/Developer/SDKs/MacOSX$(OSX_VERSION).sdk
-CC=gcc-4.2
-CXX=g++-4.2
-AR=ar
-LD=ld
-STRIP=strip
-RANLIB=ranlib
+MIN_OSX_VERSION=10.6
+CC=xcrun gcc
+CXX=xcrun g++
+AR=xcrun ar
+LD=xcrun ld
+STRIP=xcrun strip
+RANLIB=xcrun ranlib
 EXTRA_CFLAGS += -isysroot $(MACOSX_SDK) -mmacosx-version-min=$(MIN_OSX_VERSION) -DMACOSX_DEPLOYMENT_TARGET=$(MIN_OSX_VERSION)
 EXTRA_LDFLAGS += -Wl,-syslibroot,$(MACOSX_SDK) -mmacosx-version-min=$(MIN_OSX_VERSION) -isysroot $(MACOSX_SDK) -DMACOSX_DEPLOYMENT_TARGET=$(MIN_OSX_VERSION)
 ifeq ($(ARCH),x86_64)
 EXTRA_CFLAGS += -m64
 EXTRA_LDFLAGS += -m64
 else
-ifeq ($(ARCH), ppc)
-EXTRA_CFLAGS += -arch ppc
-EXTRA_LDFLAGS += -arch ppc
-else
 EXTRA_CFLAGS += -m32
 EXTRA_LDFLAGS += -m32
-endif
 endif
 
 XCODE_FLAGS = -sdk macosx$(OSX_VERSION)
@@ -166,7 +145,7 @@ LD=xcrun ld
 STRIP=xcrun strip
 RANLIB=xcrun ranlib
 ifeq ($(ARCH), arm)
-EXTRA_CFLAGS += -arch armv7 -mno-thumb -mcpu=cortex-a8
+EXTRA_CFLAGS += -arch armv7 -mcpu=cortex-a8
 EXTRA_LDFLAGS += -arch armv7
 else
 EXTRA_CFLAGS += -m32
@@ -186,8 +165,8 @@ cppcheck = $(shell $(CC) $(CFLAGS) -E -dM - < /dev/null | grep -E $(1))
 
 EXTRA_CFLAGS += -I$(PREFIX)/include
 CPPFLAGS := $(CPPFLAGS) $(EXTRA_CFLAGS)
-CFLAGS := $(CFLAGS) $(EXTRA_CFLAGS)
-CXXFLAGS := $(CXXFLAGS) $(EXTRA_CFLAGS)
+CFLAGS := $(CFLAGS) $(EXTRA_CFLAGS) -g
+CXXFLAGS := $(CXXFLAGS) $(EXTRA_CFLAGS) -g
 EXTRA_LDFLAGS += -L$(PREFIX)/lib
 LDFLAGS := $(LDFLAGS) $(EXTRA_LDFLAGS)
 # Do not export those! Use HOSTVARS.
@@ -310,7 +289,7 @@ APPLY = (cd $(UNPACK_DIR) && patch -p1) <
 pkg_static = (cd $(UNPACK_DIR) && ../../../contrib/src/pkg-static.sh $(1))
 MOVE = mv $(UNPACK_DIR) $@ && touch $@
 
-AUTOMAKE_DATA_DIRS=$(abspath $(dir $(shell which automake))/../share/automake*)
+AUTOMAKE_DATA_DIRS=$(foreach n,$(foreach n,$(subst :, ,$(shell echo $$PATH)),$(abspath $(n)/../share)),$(wildcard $(n)/automake*))
 UPDATE_AUTOCONFIG = for dir in $(AUTOMAKE_DATA_DIRS); do \
 		if test -f "$${dir}/config.sub" -a -f "$${dir}/config.guess"; then \
 			cp "$${dir}/config.sub" "$${dir}/config.guess" $(UNPACK_DIR); \
@@ -369,8 +348,9 @@ vlc-contrib-$(HOST)-latest.tar.bz2:
 	$(call download,$(PREBUILT_URL))
 
 prebuilt: vlc-contrib-$(HOST)-latest.tar.bz2
-	$(UNPACK) && mv $(HOST) $(TOPDST)
-	cd $(TOPDST)/$(HOST) && ./change_prefix.sh
+	-$(UNPACK)
+	mv $(HOST) $(TOPDST)
+	cd $(TOPDST)/$(HOST) && $(SRC)/change_prefix.sh
 
 package: install
 	rm -Rf tmp/
@@ -380,8 +360,7 @@ package: install
 	cd tmp/$(notdir $(PREFIX)); \
 		cd share; rm -Rf man doc gtk-doc info lua projectM gettext; cd ..; \
 		rm -Rf man sbin etc lib/lua lib/sidplay
-	cp $(SRC)/change_prefix.sh tmp/$(notdir $(PREFIX))/
-	cd tmp/$(notdir $(PREFIX)) && ./change_prefix.sh $(PREFIX) @@CONTRIB_PREFIX@@
+	cd tmp/$(notdir $(PREFIX)) && $(abspath $(SRC))/change_prefix.sh $(PREFIX) @@CONTRIB_PREFIX@@
 	(cd tmp && tar c $(notdir $(PREFIX))/) | bzip2 -c > ../vlc-contrib-$(HOST)-$(DATE).tar.bz2
 
 list:

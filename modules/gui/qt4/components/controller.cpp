@@ -359,6 +359,9 @@ QWidget *AbstractController::createWidget( buttonType_e button, int options )
                  THEMIM->getIM(), sliderUpdate( float ) );
         CONNECT( THEMIM->getIM(), cachingChanged( float ),
                  slider, updateBuffering( float ) );
+        /* Give hint to disable slider's interactivity when useless */
+        CONNECT( THEMIM->getIM(), inputCanSeek( bool ),
+                 slider, setSeekable( bool ) );
         widget = slider;
         }
         break;
@@ -935,7 +938,7 @@ void FullscreenControllerWidget::customEvent( QEvent *event )
     switch( (int)event->type() )
     {
         /* This is used when the 'i' hotkey is used, to force quick toggle */
-        case FullscreenControlToggle_Type:
+        case IMEvent::FullscreenControlToggle:
             vlc_mutex_lock( &lock );
             b_fs = b_fullscreen;
             vlc_mutex_unlock( &lock );
@@ -952,7 +955,7 @@ void FullscreenControllerWidget::customEvent( QEvent *event )
             }
             break;
         /* Event called to Show the FSC on mouseChanged() */
-        case FullscreenControlShow_Type:
+        case IMEvent::FullscreenControlShow:
             vlc_mutex_lock( &lock );
             b_fs = b_fullscreen;
             vlc_mutex_unlock( &lock );
@@ -962,12 +965,12 @@ void FullscreenControllerWidget::customEvent( QEvent *event )
 
             break;
         /* Start the timer to hide later, called usually with above case */
-        case FullscreenControlPlanHide_Type:
+        case IMEvent::FullscreenControlPlanHide:
             if( !b_mouse_over ) // Only if the mouse is not over FSC
                 planHideFSC();
             break;
         /* Hide */
-        case FullscreenControlHide_Type:
+        case IMEvent::FullscreenControlHide:
             hideFSC();
             break;
         default:
@@ -1062,7 +1065,7 @@ static int FullscreenControllerWidgetFullscreenChanged( vlc_object_t *vlc_object
 
     vout_thread_t *p_vout = (vout_thread_t *) vlc_object;
 
-    msg_Dbg( p_vout, "Qt4: Fullscreen state changed" );
+    msg_Dbg( p_vout, "Qt: Fullscreen state changed" );
     FullscreenControllerWidget *p_fs = (FullscreenControllerWidget *)data;
 
     p_fs->fullscreenChanged( p_vout, new_val.b_bool, var_GetInteger( p_vout, "mouse-hide-timeout" ) );
@@ -1171,7 +1174,7 @@ void FullscreenControllerWidget::fullscreenChanged( vout_thread_t *p_vout,
                 FullscreenControllerWidgetMouseMoved, this );
 
         /* Force fs hiding */
-        IMEvent *eHide = new IMEvent( FullscreenControlHide_Type, 0 );
+        IMEvent *eHide = new IMEvent( IMEvent::FullscreenControlHide, 0 );
         QApplication::postEvent( this, eHide );
     }
     vlc_mutex_unlock( &lock );
@@ -1199,11 +1202,11 @@ void FullscreenControllerWidget::mouseChanged( vout_thread_t *, int i_mousex, in
     if( b_toShow )
     {
         /* Show event */
-        IMEvent *eShow = new IMEvent( FullscreenControlShow_Type, 0 );
+        IMEvent *eShow = new IMEvent( IMEvent::FullscreenControlShow, 0 );
         QApplication::postEvent( this, eShow );
 
         /* Plan hide event */
-        IMEvent *eHide = new IMEvent( FullscreenControlPlanHide_Type, 0 );
+        IMEvent *eHide = new IMEvent( IMEvent::FullscreenControlPlanHide, 0 );
         QApplication::postEvent( this, eHide );
     }
 }

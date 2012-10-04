@@ -65,8 +65,8 @@
 # define IPPROTO_UDPLITE 136
 #endif
 
+#include <ctype.h>
 #include <errno.h>
-
 #include <assert.h>
 
 /*****************************************************************************
@@ -218,7 +218,7 @@ vlc_module_begin ()
 
     add_string( SOUT_CFG_PREFIX "proto", "udp", PROTO_TEXT,
                 PROTO_LONGTEXT, false )
-        change_string_list( ppsz_protos, ppsz_protocols, NULL )
+        change_string_list( ppsz_protos, ppsz_protocols )
     add_integer( SOUT_CFG_PREFIX "port", 5004, PORT_TEXT,
                  PORT_LONGTEXT, true )
     add_integer( SOUT_CFG_PREFIX "port-audio", 0, PORT_AUDIO_TEXT,
@@ -1404,11 +1404,6 @@ static int  HttpCallback( httpd_file_sys_t *p_args,
 static void* ThreadSend( void *data )
 {
 #ifdef WIN32
-# define ECONNREFUSED WSAECONNREFUSED
-# define ENOPROTOOPT  WSAENOPROTOOPT
-# define EHOSTUNREACH WSAEHOSTUNREACH
-# define ENETUNREACH  WSAENETUNREACH
-# define ENETDOWN     WSAENETDOWN
 # define ENOBUFS      WSAENOBUFS
 # define EAGAIN       WSAEWOULDBLOCK
 # define EWOULDBLOCK  WSAEWOULDBLOCK

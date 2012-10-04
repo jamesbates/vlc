@@ -14,7 +14,7 @@
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation; either version 2 of the License, or
  * (at your option) any later version.
- * 
+ *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
@@ -38,37 +38,8 @@
 #import "MainWindow.h"
 
 #import <vlc_common.h>
-#import <vlc_vout_window.h>
-#import <vlc_vout_display.h>
 #import <vlc_keys.h>
-#import <vlc_mouse.h>
-/*****************************************************************************
- * DeviceCallback: Callback triggered when the video-device variable is changed
- *****************************************************************************/
-int DeviceCallback( vlc_object_t *p_this, const char *psz_variable,
-                     vlc_value_t old_val, vlc_value_t new_val, void *param )
-{
-    vlc_value_t val;
-    vout_thread_t *p_vout = (vout_thread_t *)p_this;
 
-    msg_Dbg( p_vout, "set %"PRId64, new_val.i_int );
-    var_Create( p_vout->p_libvlc, "video-device", VLC_VAR_INTEGER );
-    var_Set( p_vout->p_libvlc, "video-device", new_val );
-
-    val.b_bool = true;
-    var_Set( p_vout, "intf-change", val );
-    return VLC_SUCCESS;
-}
-
-/*****************************************************************************
- * VLCOpenGLVideoView interface excerpt
- * full implementation in modules/video_output/macosx.m:95
- *****************************************************************************/
-@interface VLCOpenGLVideoView : NSOpenGLView
-{
-}
-- (vout_display_t *)voutDisplay;
-@end
 
 /*****************************************************************************
  * VLCVoutView implementation
@@ -84,9 +55,16 @@ int DeviceCallback( vlc_object_t *p_this, const char *psz_variable,
     [super dealloc];
 }
 
-- (void)awakeFromNib
+-(id)initWithFrame:(NSRect)frameRect
 {
-    [self registerForDraggedTypes:[NSArray arrayWithObject: NSFilenamesPboardType]];
+    if (self = [super initWithFrame:frameRect]) {
+        [self registerForDraggedTypes:[NSArray arrayWithObject: NSFilenamesPboardType]];
+    }
+
+    i_lastScrollWheelDirection = 0;
+    f_cumulated_magnification = 0.0;
+
+    return self;
 }
 
 - (NSDragOperation)draggingEntered:(id <NSDraggingInfo>)sender
@@ -118,22 +96,6 @@ int DeviceCallback( vlc_object_t *p_this, const char *psz_variable,
 #pragma mark -
 #pragma mark vout actions
 
-- (void)closeVout
-{
-    vout_thread_t * p_vout = getVout();
-    if( !p_vout )
-    {
-        var_DelCallback( p_vout, "video-device", DeviceCallback, NULL );
-        vlc_object_release( p_vout );
-    }
-}
-
-- (void)scrollWheel:(NSEvent *)theEvent
-{
-    VLCControls * o_controls = (VLCControls *)[[NSApp delegate] controls];
-    [o_controls scrollWheel: theEvent];
-}
-
 - (void)keyDown:(NSEvent *)o_event
 {
     unichar key = 0;
@@ -143,109 +105,155 @@ int DeviceCallback( vlc_object_t *p_this, const char *psz_variable,
 
     i_pressed_modifiers = [o_event modifierFlags];
 
-    if( i_pressed_modifiers & NSShiftKeyMask )
+    if (i_pressed_modifiers & NSShiftKeyMask)
         val.i_int |= KEY_MODIFIER_SHIFT;
-    if( i_pressed_modifiers & NSControlKeyMask )
+    if (i_pressed_modifiers & NSControlKeyMask)
         val.i_int |= KEY_MODIFIER_CTRL;
-    if( i_pressed_modifiers & NSAlternateKeyMask )
+    if (i_pressed_modifiers & NSAlternateKeyMask)
         val.i_int |= KEY_MODIFIER_ALT;
-    if( i_pressed_modifiers & NSCommandKeyMask )
+    if (i_pressed_modifiers & NSCommandKeyMask)
         val.i_int |= KEY_MODIFIER_COMMAND;
 
-    key = [[[o_event charactersIgnoringModifiers] lowercaseString] characterAtIndex: 0];
+    NSString * characters = [o_event charactersIgnoringModifiers];
+    if ([characters length] > 0) {
+        key = [[characters lowercaseString] characterAtIndex: 0];
 
-    if( key )
-    {
-        vout_thread_t * p_vout = getVout();
-        /* Escape should always get you out of fullscreen */
-        if( key == (unichar) 0x1b )
-        {
-            playlist_t * p_playlist = pl_Get( VLCIntf );
-             if( var_GetBool( p_playlist, "fullscreen") )
-                 [[VLCCoreInteraction sharedInstance] toggleFullscreen];
-        }
-        /* handle Lion's default key combo for fullscreen-toggle in addition to our own hotkeys */
-        else if( key == 'f' && i_pressed_modifiers & NSControlKeyMask && i_pressed_modifiers & NSCommandKeyMask )
-            [[VLCCoreInteraction sharedInstance] toggleFullscreen];
-        else if ( p_vout )
-        {
-            if( key == ' ' )
-            {
-                [[VLCCoreInteraction sharedInstance] play];
+        if (key) {
+            vout_thread_t * p_vout = getVout();
+            /* Escape should always get you out of fullscreen */
+            if (key == (unichar) 0x1b) {
+                playlist_t * p_playlist = pl_Get(VLCIntf);
+                 if (var_GetBool(p_playlist, "fullscreen"))
+                     [[VLCCoreInteraction sharedInstance] toggleFullscreen];
+            }
+            /* handle Lion's default key combo for fullscreen-toggle in addition to our own hotkeys */
+            else if (key == 'f' && i_pressed_modifiers & NSControlKeyMask && i_pressed_modifiers & NSCommandKeyMask)
+                [[VLCCoreInteraction sharedInstance] toggleFullscreen];
+            else if (p_vout) {
+                if (key == ' ')
+                    [[VLCCoreInteraction sharedInstance] play];
+                else {
+                    val.i_int |= (int)CocoaKeyToVLC(key);
+                    var_Set(p_vout->p_libvlc, "key-pressed", val);
+                }
             }
             else
-            {
-                val.i_int |= (int)CocoaKeyToVLC( key );
-                var_Set( p_vout->p_libvlc, "key-pressed", val );
-            }
-            vlc_object_release( p_vout );
+                msg_Dbg(VLCIntf, "could not send keyevent to VLC core");
+
+            if (p_vout)
+                vlc_object_release(p_vout);
+
+            return;
         }
-        else
-            msg_Dbg( VLCIntf, "could not send keyevent to VLC core" );
     }
-    else
-        [super keyDown: o_event];
+    [super keyDown: o_event];
+}
+
+- (BOOL)performKeyEquivalent:(NSEvent *)o_event
+{
+    return [[VLCMainWindow sharedInstance] performKeyEquivalent: o_event];
 }
 
 - (void)mouseDown:(NSEvent *)o_event
 {
-    vout_thread_t * p_vout = getVout();
-    if( p_vout )
-    {
-        if( ( [o_event type] == NSLeftMouseDown ) &&
-          ( ! ( [o_event modifierFlags] &  NSControlKeyMask ) ) )
-        {
-            if( [o_event clickCount] > 1 )
-            {
-                /* multiple clicking */
-                [[VLCCoreInteraction sharedInstance] toggleFullscreen];
-            }
-        }
-        else if( ( [o_event type] == NSRightMouseDown ) ||
-               ( ( [o_event type] == NSLeftMouseDown ) &&
-                 ( [o_event modifierFlags] &  NSControlKeyMask ) ) )
-        {
-            msg_Dbg( p_vout, "received NSRightMouseDown (generic method) or Ctrl clic" );
-            [NSMenu popUpContextMenu: [[VLCMainMenu sharedInstance] voutMenu] withEvent: o_event forView: self];
-        }
-        vlc_object_release( p_vout );
-    }
+    if (([o_event type] == NSLeftMouseDown) && (! ([o_event modifierFlags] &  NSControlKeyMask))) {
+        if ([o_event clickCount] > 1)
+            [[VLCCoreInteraction sharedInstance] toggleFullscreen];
+    } else if (([o_event type] == NSRightMouseDown) ||
+               (([o_event type] == NSLeftMouseDown) &&
+               ([o_event modifierFlags] &  NSControlKeyMask)))
+        [NSMenu popUpContextMenu: [[VLCMainMenu sharedInstance] voutMenu] withEvent: o_event forView: self];
 
     [super mouseDown: o_event];
 }
 
 - (void)rightMouseDown:(NSEvent *)o_event
 {
-    if( [o_event type] == NSRightMouseDown )
-    {
-        vout_thread_t * p_vout = getVout();
-        if (p_vout)
-            [NSMenu popUpContextMenu: [[VLCMainMenu sharedInstance] voutMenu] withEvent: o_event forView: self];
-        vlc_object_release( p_vout );
-    }
+    if ([o_event type] == NSRightMouseDown)
+        [NSMenu popUpContextMenu: [[VLCMainMenu sharedInstance] voutMenu] withEvent: o_event forView: self];
 
     [super mouseDown: o_event];
 }
 
 - (void)rightMouseUp:(NSEvent *)o_event
 {
-    if( [o_event type] == NSRightMouseUp )
-    {
-        vout_thread_t * p_vout = getVout();
-        if (p_vout)
-        {
-            [NSMenu popUpContextMenu: [[VLCMainMenu sharedInstance] voutMenu] withEvent: o_event forView: self];
-            vlc_object_release( p_vout );
-        }
-    }
+    if ([o_event type] == NSRightMouseUp)
+        [NSMenu popUpContextMenu: [[VLCMainMenu sharedInstance] voutMenu] withEvent: o_event forView: self];
 
     [super mouseUp: o_event];
 }
 
 - (void)mouseMoved:(NSEvent *)o_event
 {
-    [[VLCMain sharedInstance] showFullscreenController];
+    NSPoint ml = [self convertPoint: [o_event locationInWindow] fromView: nil];
+    if ([self mouse: ml inRect: [self bounds]])
+        [[VLCMain sharedInstance] showFullscreenController];
+
     [super mouseMoved: o_event];
+}
+
+- (void)resetScrollWheelDirection
+{
+    /* release the scroll direction 0.8 secs after the last event */
+    if (([NSDate timeIntervalSinceReferenceDate] - t_lastScrollEvent) >= 0.80)
+        i_lastScrollWheelDirection = 0;
+}
+
+- (void)scrollWheel:(NSEvent *)theEvent
+{
+    intf_thread_t * p_intf = VLCIntf;
+    CGFloat f_deltaX = [theEvent deltaX];
+    CGFloat f_deltaY = [theEvent deltaY];
+
+    if (!OSX_SNOW_LEOPARD && [theEvent isDirectionInvertedFromDevice]) {
+        f_deltaX = -f_deltaX;
+        f_deltaY = -f_deltaY;
+    }
+
+    CGFloat f_yabsvalue = f_deltaY > 0.0f ? f_deltaY : -f_deltaY;
+    CGFloat f_xabsvalue = f_deltaX > 0.0f ? f_deltaX : -f_deltaX;
+
+    int i_yvlckey, i_xvlckey = 0;
+    if (f_deltaY < 0.0f)
+        i_yvlckey = KEY_MOUSEWHEELDOWN;
+    else
+        i_yvlckey = KEY_MOUSEWHEELUP;
+    
+    if (f_deltaX < 0.0f)
+        i_xvlckey = KEY_MOUSEWHEELRIGHT;
+    else
+        i_xvlckey = KEY_MOUSEWHEELLEFT;
+
+    /* in the following, we're forwarding either a x or a y event */
+    /* Multiple key events are send depending on the intensity of the event */
+    /* the opposite direction is being blocked for 0.8 secs */
+    if (f_yabsvalue > 0.05) {
+        if (i_lastScrollWheelDirection < 0) // last was a X
+            return;
+
+        i_lastScrollWheelDirection = 1; // Y
+        for (NSUInteger i = 0; i < (int)(f_yabsvalue/4.+1.); i++)
+            var_SetInteger(p_intf->p_libvlc, "key-pressed", i_yvlckey);
+
+        t_lastScrollEvent = [NSDate timeIntervalSinceReferenceDate];
+        [self performSelector:@selector(resetScrollWheelDirection)
+                   withObject: NULL
+                   afterDelay:1.00];
+        return;
+    }
+    if (f_xabsvalue > 0.05) {
+        if (i_lastScrollWheelDirection > 0) // last was a Y
+            return;
+
+        i_lastScrollWheelDirection = -1; // X
+        for (NSUInteger i = 0; i < (int)(f_xabsvalue/6.+1.); i++)
+            var_SetInteger(p_intf->p_libvlc, "key-pressed", i_xvlckey);
+
+        t_lastScrollEvent = [NSDate timeIntervalSinceReferenceDate];
+        [self performSelector:@selector(resetScrollWheelDirection)
+                   withObject: NULL
+                   afterDelay:1.00];
+    }
 }
 
 - (BOOL)mouseDownCanMoveWindow
@@ -272,6 +280,26 @@ int DeviceCallback( vlc_object_t *p_this, const char *psz_variable,
 -(void)didAddSubview:(NSView *)subview
 {
     [[self window] makeFirstResponder: subview];
+}
+
+- (void)magnifyWithEvent:(NSEvent *)event
+{
+    f_cumulated_magnification += [event magnification];
+
+    // This is the result of [NSEvent standardMagnificationThreshold].
+    // Unfortunately, this is a private API, currently.
+    CGFloat f_threshold = 0.3;
+    BOOL b_fullscreen = [[VLCMainWindow sharedInstance] fullscreen];
+
+    if ((f_cumulated_magnification > f_threshold && !b_fullscreen) || (f_cumulated_magnification < -f_threshold && b_fullscreen)) {
+        f_cumulated_magnification = 0.0;
+        [[VLCCoreInteraction sharedInstance] toggleFullscreen];
+    }
+}
+
+- (void)beginGestureWithEvent:(NSEvent *)event
+{
+    f_cumulated_magnification = 0.0;
 }
 
 @end

@@ -91,9 +91,11 @@ static picture_t *DecodePacket( decoder_t *, ogg_packet * );
 static void ParseTheoraComments( decoder_t * );
 static void theora_CopyPicture( picture_t *, th_ycbcr_buffer );
 
+#ifdef ENABLE_SOUT
 static int  OpenEncoder( vlc_object_t *p_this );
 static void CloseEncoder( vlc_object_t *p_this );
 static block_t *Encode( encoder_t *p_enc, picture_t *p_pict );
+#endif
 
 /*****************************************************************************
  * Module descriptor
@@ -118,6 +120,7 @@ vlc_module_begin ()
     set_callbacks( OpenPacketizer, CloseDecoder )
     add_shortcut( "theora" )
 
+#ifdef ENABLE_SOUT
     add_submodule ()
     set_description( N_("Theora video encoder") )
     set_capability( "encoder", 150 )
@@ -127,6 +130,7 @@ vlc_module_begin ()
 #   define ENC_CFG_PREFIX "sout-theora-"
     add_integer( ENC_CFG_PREFIX "quality", 2, ENC_QUALITY_TEXT,
                  ENC_QUALITY_LONGTEXT, false )
+#endif
 vlc_module_end ()
 
 static const char *const ppsz_enc_options[] = {
@@ -454,7 +458,9 @@ static picture_t *DecodePacket( decoder_t *p_dec, ogg_packet *p_oggpacket )
 
     /* TODO: Implement _granpos (3rd parameter here) and add the
      * call to TH_DECCTL_SET_GRANDPOS after seek */
-    if (th_decode_packetin( p_sys->tcx, p_oggpacket, NULL )) /* 0 on success */
+    /* TODO: If the return is TH_DUPFRAME, we don't need to display a new
+     * frame, but we do need to keep displaying the previous one. */
+    if (th_decode_packetin( p_sys->tcx, p_oggpacket, NULL ) < 0)
         return NULL; /* bad packet */
 
     /* Check for keyframe */
@@ -589,13 +595,14 @@ static void theora_CopyPicture( picture_t *p_pic,
              i_line < __MIN(p_pic->p[i_plane].i_lines, ycbcr[i_plane].height);
              i_line++ )
         {
-            vlc_memcpy( p_dst, p_src, ycbcr[i_plane].width );
+            memcpy( p_dst, p_src, ycbcr[i_plane].width );
             p_src += i_src_stride;
             p_dst += i_dst_stride;
         }
     }
 }
 
+#ifdef ENABLE_SOUT
 /*****************************************************************************
  * encoder_sys_t : theora encoder descriptor
  *****************************************************************************/
@@ -869,3 +876,4 @@ static void CloseEncoder( vlc_object_t *p_this )
     p_sys->tcx = NULL;
     free( p_sys );
 }
+#endif

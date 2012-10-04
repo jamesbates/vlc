@@ -55,6 +55,7 @@ typedef struct logical_stream_s
     int              i_packets_backup;
     void             *p_headers;
     int              i_headers;
+    ogg_int64_t      i_previous_granulepos;
 
     /* program clock reference (in units of 90kHz) derived from the previous
      * granulepos */
@@ -65,6 +66,10 @@ typedef struct logical_stream_s
     /* Misc */
     bool b_reinit;
     int i_granule_shift;
+    /* Opus has a starting offset in the headers. */
+    int i_pre_skip;
+    /* Vorbis and Opus can trim the end of a stream using granule positions. */
+    int i_end_trim;
 
     /* offset of first keyframe for theora; can be 0 or 1 depending on version number */
     int64_t i_keyframe_offset;
@@ -135,4 +140,7 @@ struct demux_sys_t
     /* */
     int                i_attachments;
     input_attachment_t **attachments;
+
+    /* Length, if available. */
+    int64_t i_length;
 };

@@ -32,8 +32,9 @@
 #include <vlc_plugin.h>
 #include <vlc_demux.h>
 #include <vlc_url.h>
-#ifdef WIN32
-# include <ctype.h>
+
+#if defined( WIN32 ) || defined( __OS2__ )
+# include <ctype.h>                          /* isalpha */
 #endif
 #include <assert.h>
 
@@ -221,5 +222,5 @@ char *ProcessMRL( const char *psz_mrl, const char *psz_prefix )
     return ret;
 
 uri:
-    return make_URI( psz_mrl, NULL );
+    return vlc_path2uri( psz_mrl, NULL );
 }

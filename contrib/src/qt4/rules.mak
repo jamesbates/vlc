@@ -1,7 +1,7 @@
 # qt4
 
-QT4_VERSION = 4.8.1
-QT4_URL := http://download.qt.nokia.com/qt/source/qt-everywhere-opensource-src-$(QT4_VERSION).tar.gz
+QT4_VERSION = 4.8.2
+QT4_URL := http://releases.qt-project.org/qt4/source/qt-everywhere-opensource-src-$(QT4_VERSION).tar.gz
 
 ifdef HAVE_MACOSX
 #PKGS += qt4
@@ -21,24 +21,24 @@ $(TARBALLS)/qt-$(QT4_VERSION).tar.gz:
 
 qt4: qt-$(QT4_VERSION).tar.gz .sum-qt4
 	$(UNPACK)
-	cd qt-everywhere-opensource-src-$(QT4_VERSION) && \
-		patch -p0 < ../$(SRC)/qt4/cross.patch && \
-		patch -p0 < ../$(SRC)/qt4/styles.patch && \
-		patch -p0 < ../$(SRC)/qt4/chroot.patch && \
-		patch -p0 < ../$(SRC)/qt4/imageformats.patch
-	mv qt-everywhere-opensource-src-$(QT4_VERSION) $@ && touch $@
+	mv qt-everywhere-opensource-src-$(QT4_VERSION) qt-$(QT4_VERSION)
+	$(APPLY) $(SRC)/qt4/cross.patch
+	$(APPLY) $(SRC)/qt4/styles.patch
+	$(APPLY) $(SRC)/qt4/chroot.patch
+	$(APPLY) $(SRC)/qt4/imageformats.patch
+	$(MOVE)
 
 XTOOLS := XCC="$(CC)" XCXX="$(CXX)" XSTRIP="$(STRIP)" XAR="$(AR)"
 
 ifdef HAVE_MACOSX
-PLATFORM := -platform darwin-g++
+QT_PLATFORM := -platform darwin-g++
 endif
 ifdef HAVE_WIN32
-PLATFORM := -xplatform win32-g++
+QT_PLATFORM := -xplatform win32-g++
 endif
 
 .qt4: qt4
-	cd $< && $(XTOOLS) ./configure $(PLATFORM) -static -release -fast -no-exceptions -no-stl -no-sql-sqlite -no-qt3support -no-gif -no-libmng -qt-libjpeg -no-libtiff -no-qdbus -no-openssl -no-webkit -sse -no-script -no-multimedia -no-phonon -opensource -no-scripttools -no-opengl -no-script -no-scripttools -no-declarative -no-declarative-debug -opensource -no-s60 -host-little-endian -confirm-license
+	cd $< && $(XTOOLS) ./configure $(QT_PLATFORM) -static -release -fast -no-exceptions -no-stl -no-sql-sqlite -no-qt3support -no-gif -no-libmng -qt-libjpeg -no-libtiff -no-qdbus -no-openssl -no-webkit -sse -no-script -no-multimedia -no-phonon -opensource -no-scripttools -no-opengl -no-script -no-scripttools -no-declarative -no-declarative-debug -opensource -no-s60 -host-little-endian -confirm-license
 	cd $< && $(MAKE) $(XTOOLS) sub-src
 	# BUILDING QT BUILD TOOLS
 ifdef HAVE_CROSS_COMPILE

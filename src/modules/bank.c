@@ -112,8 +112,6 @@ void module_InitBank (void)
         module_t *module = module_InitStatic (vlc_entry__main);
         if (likely(module != NULL))
             module_StoreBank (module);
-
-        module_InitStaticModules();
         config_SortConfig ();
     }
     modules.usage++;
@@ -180,15 +178,16 @@ size_t module_LoadPlugins (vlc_object_t *obj)
 {
     /*vlc_assert_locked (&modules.lock); not for static mutexes :( */
 
-#ifdef HAVE_DYNAMIC_PLUGINS
     if (modules.usage == 1)
     {
+        module_InitStaticModules ();
+#ifdef HAVE_DYNAMIC_PLUGINS
         msg_Dbg (obj, "searching plug-in modules");
         AllocateAllPlugins (obj);
+#endif
         config_UnsortConfig ();
         config_SortConfig ();
     }
-#endif
     vlc_mutex_unlock (&modules.lock);
 
     size_t count;
@@ -211,9 +210,9 @@ void module_list_free (module_t **list)
 
 /**
  * Gets the flat list of VLC modules.
- * @param n [OUT] pointer to the number of modules or NULL
- * @return NULL-terminated table of module pointers
- *         (release with module_list_free()), or NULL in case of error.
+ * @param n [OUT] pointer to the number of modules
+ * @return table of module pointers (release with module_list_free()),
+ *         or NULL in case of error (in that case, *n is zeroed).
  */
 module_t **module_list_get (size_t *n)
 {
@@ -222,13 +221,16 @@ module_t **module_list_get (size_t *n)
     module_t **tab = NULL;
     size_t i = 0;
 
+    assert (n != NULL);
+
     for (module_t *mod = modules.head; mod; mod = mod->next)
     {
          module_t **nt;
-         nt  = realloc (tab, (i + 2 + mod->submodule_count) * sizeof (*tab));
-         if (nt == NULL)
+         nt  = realloc (tab, (i + 1 + mod->submodule_count) * sizeof (*tab));
+         if (unlikely(nt == NULL))
          {
-             module_list_free (tab);
+             free (tab);
+             *n = 0;
              return NULL;
          }
 
@@ -236,10 +238,8 @@ module_t **module_list_get (size_t *n)
          tab[i++] = mod;
          for (module_t *subm = mod->submodule; subm; subm = subm->next)
              tab[i++] = subm;
-         tab[i] = NULL;
     }
-    if (n != NULL)
-        *n = i;
+    *n = i;
     return tab;
 }
 
@@ -486,11 +486,11 @@ static int AllocatePluginFile (module_bank_t *bank, const char *abspath,
         module->b_loaded = false;
     }
 
-    /* For now we force loading if the module's config contains
-     * callbacks or actions.
+    /* For now we force loading if the module's config contains callbacks.
      * Could be optimized by adding an API call.*/
     for (size_t n = module->confsize, i = 0; i < n; i++)
-         if (module->p_config[i].i_action)
+         if (module->p_config[i].list_count == 0
+          && (module->p_config[i].list.psz_cb != NULL || module->p_config[i].list.i_cb != NULL))
          {
              /* !unloadable not allowed for plugins with callbacks */
              vlc_module_destroy (module);

@@ -2669,7 +2669,7 @@ msgstr "Elenco dei decodificatori preferiti"
 msgid ""
 "When several video formats are available, select one whose resolution is "
 "closest to (but not higher than) this setting, in number of lines. Use this "
-"option if you don't have enough CPU power or network bandwith to play higher "
+"option if you don't have enough CPU power or network bandwidth to play higher "
 "resolutions."
 msgstr ""
 
@@ -30072,14 +30072,6 @@ msgstr "Acco&da"
 #, fuzzy
 #~ msgid "Automate picture coding mode"
 #~ msgstr "modalità di resa video"
-
-#, fuzzy
-#~ msgid ""
-#~ "This is the relative default size of the fonts that will be rendered on "
-#~ "the video. If absolute font size is set, relative size will be overriden."
-#~ msgstr ""
-#~ "La dimensione dei caratteri utilizzati dal modulo osd. Se impostata ad un "
-#~ "valore diverso da 0, modifica la dimensione relativa dei caratteri "
 
 #~ msgid "...when VLC is in background"
 #~ msgstr "...quando VLC è in esecuzione in background"

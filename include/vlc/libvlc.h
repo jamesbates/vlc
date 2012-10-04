@@ -101,6 +101,8 @@ LIBVLC_API void libvlc_clearerr (void);
 /**
  * Sets the LibVLC error status and message for the current thread.
  * Any previous error is overridden.
+ * \param fmt the format string
+ * \param ap the arguments
  * \return a nul terminated string in any case
  */
 LIBVLC_API const char *libvlc_vprinterr (const char *fmt, va_list ap);
@@ -108,6 +110,8 @@ LIBVLC_API const char *libvlc_vprinterr (const char *fmt, va_list ap);
 /**
  * Sets the LibVLC error status and message for the current thread.
  * Any previous error is overridden.
+ * \param fmt the format string
+ * \param args the arguments
  * \return a nul terminated string in any case
  */
 LIBVLC_API const char *libvlc_printerr (const char *fmt, ...);
@@ -167,15 +171,20 @@ int libvlc_add_intf( libvlc_instance_t *p_instance, const char *name );
 
 /**
  * Registers a callback for the LibVLC exit event. This is mostly useful if
- * you have started at least one interface with libvlc_add_intf().
+ * the VLC playlist and/or at least one interface are started with
+ * libvlc_playlist_play() or libvlc_add_intf() respectively.
  * Typically, this function will wake up your application main loop (from
  * another thread).
  *
+ * \note This function should be called before the playlist or interface are
+ * started. Otherwise, there is a small race condition: the exit event could
+ * be raised before the handler is registered.
+ *
  * \param p_instance LibVLC instance
- * \param cb callback to invoke when LibVLC wants to exit
+ * \param cb callback to invoke when LibVLC wants to exit,
+ *           or NULL to disable the exit handler (as by default)
  * \param opaque data pointer for the callback
  * \warning This function and libvlc_wait() cannot be used at the same time.
- * Use either or none of them but not both.
  */
 LIBVLC_API
 void libvlc_set_exit_handler( libvlc_instance_t *p_instance,
@@ -186,8 +195,10 @@ void libvlc_set_exit_handler( libvlc_instance_t *p_instance,
  * You should start at least one interface first, using libvlc_add_intf().
  *
  * \param p_instance the instance
+ * \warning This function wastes one thread doing basically nothing.
+ * libvlc_set_exit_handler() should be used instead.
  */
-LIBVLC_API
+LIBVLC_DEPRECATED LIBVLC_API
 void libvlc_wait( libvlc_instance_t *p_instance );
 
 /**
@@ -319,10 +330,10 @@ LIBVLC_API const char * libvlc_event_type_name( libvlc_event_type_t event_type )
  */
 enum libvlc_log_level
 {
-    LIBVLC_DEBUG=0 /**< Debug message */,
-    LIBVLC_NOTICE=2 /**< Important informational message */,
-    LIBVLC_WARNING=3 /**< Warning (potential error) message */,
-    LIBVLC_ERROR=4 /**< Error message */,
+    LIBVLC_DEBUG=0,   /**< Debug message */
+    LIBVLC_NOTICE=2,  /**< Important informational message */
+    LIBVLC_WARNING=3, /**< Warning (potential error) message */
+    LIBVLC_ERROR=4    /**< Error message */
 };
 
 /**
@@ -368,6 +379,7 @@ typedef struct libvlc_log_subscriber
  *
  * \warning Do not call this function from within a logging callback.
  * It would trigger a dead lock.
+ * \version LibVLC 2.1.0 or later
  */
 LIBVLC_API void libvlc_log_subscribe( libvlc_log_subscriber_t *sub,
                                       libvlc_log_cb cb, void *data );
@@ -375,8 +387,9 @@ LIBVLC_API void libvlc_log_subscribe( libvlc_log_subscriber_t *sub,
 
 /**
  * Registers a logging callback to a file.
- * @param stream FILE pointer opened for writing
+ * \param stream FILE pointer opened for writing
  *         (the FILE pointer must remain valid until libvlc_log_unsubscribe())
+ * \version LibVLC 2.1.0 or later
  */
 LIBVLC_API void libvlc_log_subscribe_file( libvlc_log_subscriber_t *sub,
                                            FILE *stream );
@@ -393,6 +406,7 @@ LIBVLC_API void libvlc_log_subscribe_file( libvlc_log_subscriber_t *sub,
  * It would trigger a dead lock.
  *
  * \param sub initialized subscriber structure
+ * \version LibVLC 2.1.0 or later
  */
 LIBVLC_API void libvlc_log_unsubscribe( libvlc_log_subscriber_t *sub );
 
@@ -403,8 +417,8 @@ LIBVLC_API void libvlc_log_unsubscribe( libvlc_log_subscriber_t *sub );
  * \param p_instance ignored
  * \return always -1
  */
-LIBVLC_DEPRECATED
-LIBVLC_API unsigned libvlc_get_log_verbosity( const libvlc_instance_t *p_instance );
+LIBVLC_DEPRECATED LIBVLC_API
+unsigned libvlc_get_log_verbosity( const libvlc_instance_t *p_instance );
 
 /**
  * This function does nothing.
@@ -413,8 +427,8 @@ LIBVLC_API unsigned libvlc_get_log_verbosity( const libvlc_instance_t *p_instanc
  * \param p_instance ignored
  * \param level ignored
  */
-LIBVLC_DEPRECATED
-LIBVLC_API void libvlc_set_log_verbosity( libvlc_instance_t *p_instance, unsigned level );
+LIBVLC_DEPRECATED LIBVLC_API
+void libvlc_set_log_verbosity( libvlc_instance_t *p_instance, unsigned level );
 
 /**
  * This function does nothing useful.
@@ -423,16 +437,16 @@ LIBVLC_API void libvlc_set_log_verbosity( libvlc_instance_t *p_instance, unsigne
  * \param p_instance libvlc instance
  * \return an unique pointer or NULL on error
  */
-LIBVLC_DEPRECATED
-LIBVLC_API libvlc_log_t *libvlc_log_open( libvlc_instance_t *p_instance );
+LIBVLC_DEPRECATED LIBVLC_API
+libvlc_log_t *libvlc_log_open( libvlc_instance_t *p_instance );
 
 /**
  * Frees memory allocated by libvlc_log_open().
  *
  * \param p_log libvlc log instance or NULL
  */
-LIBVLC_DEPRECATED
-LIBVLC_API void libvlc_log_close( libvlc_log_t *p_log );
+LIBVLC_DEPRECATED LIBVLC_API
+void libvlc_log_close( libvlc_log_t *p_log );
 
 /**
  * Always returns zero.
@@ -441,8 +455,8 @@ LIBVLC_API void libvlc_log_close( libvlc_log_t *p_log );
  * \param p_log ignored
  * \return always zero
  */
-LIBVLC_DEPRECATED
-LIBVLC_API unsigned libvlc_log_count( const libvlc_log_t *p_log );
+LIBVLC_DEPRECATED LIBVLC_API
+unsigned libvlc_log_count( const libvlc_log_t *p_log );
 
 /**
  * This function does nothing.
@@ -450,8 +464,8 @@ LIBVLC_API unsigned libvlc_log_count( const libvlc_log_t *p_log );
  *
  * \param p_log ignored
  */
-LIBVLC_DEPRECATED
-LIBVLC_API void libvlc_log_clear( libvlc_log_t *p_log );
+LIBVLC_DEPRECATED LIBVLC_API
+void libvlc_log_clear( libvlc_log_t *p_log );
 
 /**
  * This function does nothing useful.
@@ -460,16 +474,16 @@ LIBVLC_API void libvlc_log_clear( libvlc_log_t *p_log );
  * \param p_log ignored
  * \return an unique pointer or NULL on error or if the parameter was NULL
  */
-LIBVLC_DEPRECATED
-LIBVLC_API libvlc_log_iterator_t *libvlc_log_get_iterator( const libvlc_log_t *p_log );
+LIBVLC_DEPRECATED LIBVLC_API
+libvlc_log_iterator_t *libvlc_log_get_iterator( const libvlc_log_t *p_log );
 
 /**
  * Frees memory allocated by libvlc_log_get_iterator().
  *
  * \param p_iter libvlc log iterator or NULL
  */
-LIBVLC_DEPRECATED
-LIBVLC_API void libvlc_log_iterator_free( libvlc_log_iterator_t *p_iter );
+LIBVLC_DEPRECATED LIBVLC_API
+void libvlc_log_iterator_free( libvlc_log_iterator_t *p_iter );
 
 /**
  * Always returns zero.
@@ -478,20 +492,20 @@ LIBVLC_API void libvlc_log_iterator_free( libvlc_log_iterator_t *p_iter );
  * \param p_iter ignored
  * \return always zero
  */
-LIBVLC_DEPRECATED
-LIBVLC_API int libvlc_log_iterator_has_next( const libvlc_log_iterator_t *p_iter );
+LIBVLC_DEPRECATED LIBVLC_API
+int libvlc_log_iterator_has_next( const libvlc_log_iterator_t *p_iter );
 
 /**
  * Always returns NULL.
  * This function is only provided for backward compatibility.
  *
  * \param p_iter libvlc log iterator or NULL
- * \param p_buffer ignored
+ * \param p_buf ignored
  * \return always NULL
  */
-LIBVLC_DEPRECATED
-LIBVLC_API libvlc_log_message_t *libvlc_log_iterator_next( libvlc_log_iterator_t *p_iter,
-                                                           libvlc_log_message_t *p_buffer );
+LIBVLC_DEPRECATED LIBVLC_API
+libvlc_log_message_t *libvlc_log_iterator_next( libvlc_log_iterator_t *p_iter,
+                                                libvlc_log_message_t *p_buf );
 
 /** @} */
 

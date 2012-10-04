@@ -79,7 +79,7 @@ vlc_module_begin ()
                SUB_DELAY_LONGTEXT, true )
     add_string( "sub-type", "auto", N_("Subtitles format"),
                 SUB_TYPE_LONGTEXT, true )
-        change_string_list( ppsz_sub_type, NULL, NULL )
+        change_string_list( ppsz_sub_type, ppsz_sub_type )
     add_string( "sub-description", NULL, N_("Subtitles description"),
                 SUB_DESCRIPTION_LONGTEXT, true )
     set_callbacks( Open, Close )
@@ -295,6 +295,17 @@ static int Open ( vlc_object_t *p_this )
     }
     free( psz_type );
 
+    /* Detect Unicode while skipping the UTF-8 Byte Order Mark */
+    bool unicode = false;
+    const uint8_t *p_data;
+    if( stream_Peek( p_demux->s, &p_data, 3 ) >= 3
+     && !memcmp( p_data, "\xEF\xBB\xBF", 3 ) )
+    {
+        unicode = true;
+        stream_Seek( p_demux->s, 3 ); /* skip BOM */
+        msg_Dbg( p_demux, "detected Unicode Byte Order Mark" );
+    }
+
     /* Probe if unknown type */
     if( p_sys->i_type == SUB_TYPE_UNKNOWN )
     {
@@ -442,15 +453,14 @@ static int Open ( vlc_object_t *p_this )
 
         /* It will nearly always work even for non seekable stream thanks the
          * caching system, and if it fails we lose just a few sub */
-        if( stream_Seek( p_demux->s, 0 ) )
-        {
+        if( stream_Seek( p_demux->s, unicode ? 3 : 0 ) )
             msg_Warn( p_demux, "failed to rewind" );
-        }
     }
 
     /* Quit on unknown subtitles */
     if( p_sys->i_type == SUB_TYPE_UNKNOWN )
     {
+        stream_Seek( p_demux->s, 0 );
         msg_Warn( p_demux, "failed to recognize subtitle type" );
         free( p_sys );
         return VLC_EGENERIC;
@@ -518,9 +528,9 @@ static int Open ( vlc_object_t *p_this )
         es_format_Init( &fmt, SPU_ES, VLC_CODEC_SSA );
     }
     else
-    {
         es_format_Init( &fmt, SPU_ES, VLC_CODEC_SUBT );
-    }
+    if( unicode )
+        fmt.subs.psz_encoding = strdup( "UTF-8" );
     char *psz_description = var_InheritString( p_demux, "sub-description" );
     if( psz_description && *psz_description )
         fmt.psz_description = psz_description;
@@ -999,7 +1009,7 @@ static int  ParseSSA( demux_t *p_demux, subtitle_t *p_subtitle,
     {
         const char *s = TextGetLine( txt );
         int h1, m1, s1, c1, h2, m2, s2, c2;
-        char *psz_text;
+        char *psz_text, *psz_temp;
         char temp[16];
 
         if( !s )
@@ -1042,9 +1052,14 @@ static int  ParseSSA( demux_t *p_demux, subtitle_t *p_subtitle,
                 int i_layer = ( p_sys->i_type == SUB_TYPE_ASS ) ? atoi( temp ) : 0;
 
                 /* ReadOrder, Layer, %s(rest of fields) */
-                snprintf( temp, sizeof(temp), "%d,%d,", i_idx, i_layer );
-                memmove( psz_text + strlen(temp), psz_text, strlen(psz_text)+1 );
-                memcpy( psz_text, temp, strlen(temp) );
+                if( asprintf( &psz_temp, "%d,%d,%s", i_idx, i_layer, psz_text ) == -1 )
+                {
+                    free( psz_text );
+                    return VLC_ENOMEM;
+                }
+
+                free( psz_text );
+                psz_text = psz_temp;
             }
 
             p_subtitle->i_start = ( (int64_t)h1 * 3600*1000 +

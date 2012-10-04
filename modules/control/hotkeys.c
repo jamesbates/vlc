@@ -70,7 +70,7 @@ static int  SpecialKeyEvent( vlc_object_t *, char const *,
 static void PlayBookmark( intf_thread_t *, int );
 static void SetBookmark ( intf_thread_t *, int );
 static void DisplayPosition( intf_thread_t *, vout_thread_t *, input_thread_t * );
-static void DisplayVolume  ( intf_thread_t *, vout_thread_t *, audio_volume_t );
+static void DisplayVolume( intf_thread_t *, vout_thread_t *, float );
 static void DisplayRate ( vout_thread_t *, float );
 static float AdjustRateFine( input_thread_t *, const int );
 static void ClearChannels  ( intf_thread_t *, vout_thread_t * );
@@ -186,36 +186,33 @@ static int PutAction( intf_thread_t *p_intf, int i_action )
         /* Volume and audio actions */
         case ACTIONID_VOL_UP:
         {
-            audio_volume_t i_newvol;
-            aout_VolumeUp( p_playlist, 1, &i_newvol );
-            DisplayVolume( p_intf, p_vout, i_newvol );
+            float vol;
+            if( aout_VolumeUp( p_playlist, 1, &vol ) == 0 )
+                DisplayVolume( p_intf, p_vout, vol );
             break;
         }
 
         case ACTIONID_VOL_DOWN:
         {
-            audio_volume_t i_newvol;
-            aout_VolumeDown( p_playlist, 1, &i_newvol );
-            DisplayVolume( p_intf, p_vout, i_newvol );
+            float vol;
+            if( aout_VolumeDown( p_playlist, 1, &vol ) == 0 )
+                DisplayVolume( p_intf, p_vout, vol );
             break;
         }
 
         case ACTIONID_VOL_MUTE:
-        {
-            audio_volume_t i_newvol = -1;
-            aout_ToggleMute( p_playlist, &i_newvol );
-            if( p_vout )
+            if( aout_MuteToggle( p_playlist ) == 0 )
             {
-                if( i_newvol == 0 )
+                float vol = aout_VolumeGet( p_playlist );
+                if( aout_MuteGet( p_playlist ) > 0 || vol == 0.f )
                 {
                     ClearChannels( p_intf, p_vout );
                     DisplayIcon( p_vout, OSD_MUTE_ICON );
                 }
                 else
-                    DisplayVolume( p_intf, p_vout, i_newvol );
+                    DisplayVolume( p_intf, p_vout, vol );
             }
             break;
-        }
 
         /* Interface showing */
         case ACTIONID_INTF_TOGGLE_FSC:
@@ -504,6 +501,46 @@ static int PutAction( intf_thread_t *p_intf, int i_action )
                                 list2.p_list->p_values[i].psz_string );
                 var_FreeList( &list, &list2 );
             }
+            else if( i_action == ACTIONID_PROGRAM_SID )
+            {
+                vlc_value_t val, list, list2;
+                int i_count, i;
+                var_Get( p_input, "program", &val );
+
+                var_Change( p_input, "program", VLC_VAR_GETCHOICES,
+                            &list, &list2 );
+                i_count = list.p_list->i_count;
+                if( i_count <= 1 )
+                {
+                    DisplayMessage( p_vout, SPU_DEFAULT_CHANNEL,
+                                    _("Program Service ID: %s"), _("N/A") );
+                    var_FreeList( &list, &list2 );
+                    goto cleanup_and_continue;
+                }
+                for( i = 0; i < i_count; i++ )
+                {
+                    if( val.i_int == list.p_list->p_values[i].i_int )
+                    {
+                        break;
+                    }
+                }
+                /* value of program was not in choices list */
+                if( i == i_count )
+                {
+                    msg_Warn( p_input,
+                              "invalid current program SID, selecting 0" );
+                    i = 0;
+                }
+                else if( i == i_count - 1 )
+                    i = 0;
+                else
+                    i++;
+                var_Set( p_input, "program", list.p_list->p_values[i] );
+                DisplayMessage( p_vout, SPU_DEFAULT_CHANNEL,
+                                _("Program Service ID: %s"),
+                                list2.p_list->p_values[i].psz_string );
+                var_FreeList( &list, &list2 );
+            }
             else if( i_action == ACTIONID_ASPECT_RATIO && p_vout )
             {
                 vlc_value_t val={0}, val_list, text_list;
@@ -632,6 +669,42 @@ static int PutAction( intf_thread_t *p_intf, int i_action )
                     }
                     free( psz_mode );
                 }
+            }
+            else if( i_action == ACTIONID_DEINTERLACE_MODE && p_vout )
+            {
+                char *psz_mode = var_GetString( p_vout, "deinterlace-mode" );
+                vlc_value_t vlist, tlist;
+                if( psz_mode && !var_Change( p_vout, "deinterlace-mode", VLC_VAR_GETCHOICES, &vlist, &tlist ) >= 0 )
+                {
+                    const char *psz_text = NULL;
+                    int i;
+                    for( i = 0; i < vlist.p_list->i_count; i++ )
+                    {
+                        if( !strcmp( vlist.p_list->p_values[i].psz_string, psz_mode ) )
+                        {
+                            i++;
+                            break;
+                        }
+                    }
+                    if( i == vlist.p_list->i_count ) i = 0;
+                    psz_text = tlist.p_list->p_values[i].psz_string;
+                    var_SetString( p_vout, "deinterlace-mode", vlist.p_list->p_values[i].psz_string );
+
+                    int i_deinterlace = var_GetInteger( p_vout, "deinterlace" );
+                    if( i_deinterlace != 0 )
+                    {
+                      DisplayMessage( p_vout, SPU_DEFAULT_CHANNEL,
+                                      "%s (%s)", _("Deinterlace on"), psz_text ? psz_text : psz_mode );
+                    }
+                    else
+                    {
+                      DisplayMessage( p_vout, SPU_DEFAULT_CHANNEL,
+                                      "%s (%s)", _("Deinterlace off"), psz_text ? psz_text : psz_mode );
+                    }
+
+                    var_FreeList( &vlist, &tlist );
+                }
+                free( psz_mode );
             }
             else if( ( i_action == ACTIONID_ZOOM ||
                        i_action == ACTIONID_UNZOOM ) && p_vout )
@@ -1014,21 +1087,17 @@ static void DisplayPosition( intf_thread_t *p_intf, vout_thread_t *p_vout,
 }
 
 static void DisplayVolume( intf_thread_t *p_intf, vout_thread_t *p_vout,
-                           audio_volume_t i_vol )
+                           float vol )
 {
     if( p_vout == NULL )
-    {
         return;
-    }
     ClearChannels( p_intf, p_vout );
 
     if( var_GetBool( p_vout, "fullscreen" ) )
-    {
-        vout_OSDSlider( p_vout, VOLUME_WIDGET_CHAN,
-            i_vol*100/AOUT_VOLUME_MAX, OSD_VERT_SLIDER );
-    }
-    DisplayMessage( p_vout, VOLUME_TEXT_CHAN, _( "Volume %d%%" ),
-                    i_vol*100/AOUT_VOLUME_DEFAULT );
+        vout_OSDSlider( p_vout, VOLUME_WIDGET_CHAN, lround(vol * 100.),
+                        OSD_VERT_SLIDER );
+    DisplayMessage( p_vout, VOLUME_TEXT_CHAN, _( "Volume %ld%%" ),
+                    lround(vol * 100.) );
 }
 
 static void DisplayRate( vout_thread_t *p_vout, float f_rate )

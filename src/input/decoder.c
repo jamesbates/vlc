@@ -69,7 +69,7 @@ static void       DecoderFlushBuffering( decoder_t * );
 static void       DecoderUnsupportedCodec( decoder_t *, vlc_fourcc_t );
 
 /* Buffers allocation callbacks for the decoders */
-static aout_buffer_t *aout_new_buffer( decoder_t *, int );
+static block_t *aout_new_buffer( decoder_t *, int );
 
 static picture_t *vout_new_buffer( decoder_t * );
 static void vout_del_buffer( decoder_t *, picture_t * );
@@ -149,8 +149,8 @@ struct decoder_owner_sys_t
         subpicture_t  *p_subpic;
         subpicture_t  **pp_subpic_next;
 
-        aout_buffer_t *p_audio;
-        aout_buffer_t **pp_audio_next;
+        block_t *p_audio;
+        block_t **pp_audio_next;
 
         block_t       *p_block;
         block_t       **pp_block_next;
@@ -206,7 +206,7 @@ void decoder_UnlinkPicture( decoder_t *p_decoder, picture_t *p_picture )
     p_decoder->pf_picture_unlink( p_decoder, p_picture );
 }
 
-aout_buffer_t *decoder_NewAudioBuffer( decoder_t *p_decoder, int i_size )
+block_t *decoder_NewAudioBuffer( decoder_t *p_decoder, int i_size )
 {
     if( !p_decoder->pf_aout_buffer_new )
         return NULL;
@@ -516,16 +516,17 @@ void input_DecoderChangePause( decoder_t *p_dec, bool b_paused, mtime_t i_date )
     decoder_owner_sys_t *p_owner = p_dec->p_owner;
 
     vlc_mutex_lock( &p_owner->lock );
+    /* Normally, p_owner->b_paused != b_paused here. But if a track is added
+     * while the input is paused (e.g. add sub file), then b_paused is
+     * (incorrectly) false. */
+    if( likely(p_owner->b_paused != b_paused) ) {
+        p_owner->b_paused = b_paused;
+        p_owner->pause.i_date = i_date;
+        p_owner->pause.i_ignore = 0;
+        vlc_cond_signal( &p_owner->wait_request );
 
-    assert( p_owner->b_paused != b_paused );
-
-    p_owner->b_paused = b_paused;
-    p_owner->pause.i_date = i_date;
-    p_owner->pause.i_ignore = 0;
-    vlc_cond_signal( &p_owner->wait_request );
-
-    DecoderOutputChangePause( p_dec, b_paused, i_date );
-
+        DecoderOutputChangePause( p_dec, b_paused, i_date );
+    }
     vlc_mutex_unlock( &p_owner->lock );
 }
 
@@ -1152,7 +1153,7 @@ static void DecoderWaitDate( decoder_t *p_dec,
                                i_deadline ) == 0 );
 }
 
-static void DecoderPlayAudio( decoder_t *p_dec, aout_buffer_t *p_audio,
+static void DecoderPlayAudio( decoder_t *p_dec, block_t *p_audio,
                               int *pi_played_sum, int *pi_lost_sum )
 {
     decoder_owner_sys_t *p_owner = p_dec->p_owner;
@@ -1163,7 +1164,7 @@ static void DecoderPlayAudio( decoder_t *p_dec, aout_buffer_t *p_audio,
     {
         msg_Warn( p_dec, "non-dated audio buffer received" );
         *pi_lost_sum += 1;
-        aout_BufferFree( p_audio );
+        block_Release( p_audio );
         return;
     }
 
@@ -1239,7 +1240,7 @@ static void DecoderPlayAudio( decoder_t *p_dec, aout_buffer_t *p_audio,
         {
             msg_Dbg( p_dec, "discarded audio buffer" );
             *pi_lost_sum += 1;
-            aout_BufferFree( p_audio );
+            block_Release( p_audio );
         }
 
         if( !b_has_more )
@@ -1253,7 +1254,7 @@ static void DecoderPlayAudio( decoder_t *p_dec, aout_buffer_t *p_audio,
 static void DecoderDecodeAudio( decoder_t *p_dec, block_t *p_block )
 {
     decoder_owner_sys_t *p_owner = p_dec->p_owner;
-    aout_buffer_t   *p_aout_buf;
+    block_t *p_aout_buf;
     int i_decoded = 0;
     int i_lost = 0;
     int i_played = 0;
@@ -1708,12 +1709,12 @@ static void DecoderFlushBuffering( decoder_t *p_dec )
     }
     while( p_owner->buffer.p_audio )
     {
-        aout_buffer_t *p_audio = p_owner->buffer.p_audio;
+        block_t *p_audio = p_owner->buffer.p_audio;
 
         p_owner->buffer.p_audio = p_audio->p_next;
         p_owner->buffer.i_count--;
 
-        aout_BufferFree( p_audio );
+        block_Release( p_audio );
 
         if( !p_owner->buffer.p_audio )
             p_owner->buffer.pp_audio_next = &p_owner->buffer.p_audio;
@@ -2176,10 +2177,10 @@ static vout_thread_t *aout_request_vout( void *p_private,
     return p_vout;
 }
 
-static aout_buffer_t *aout_new_buffer( decoder_t *p_dec, int i_samples )
+static block_t *aout_new_buffer( decoder_t *p_dec, int i_samples )
 {
     decoder_owner_sys_t *p_owner = p_dec->p_owner;
-    aout_buffer_t *p_buffer;
+    block_t *p_buffer;
 
     if( p_owner->p_aout
      && !AOUT_FMTS_IDENTICAL(&p_dec->fmt_out.audio, &p_owner->audio) )

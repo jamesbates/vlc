@@ -126,6 +126,11 @@
 #define VLC_CODEC_UTVIDEO   VLC_FOURCC('U','L','R','A')
 #define VLC_CODEC_VBLE      VLC_FOURCC('V','B','L','E')
 #define VLC_CODEC_DXTORY    VLC_FOURCC('x','t','o','r')
+#define VLC_CODEC_MSS1      VLC_FOURCC('M','S','S','1')
+#define VLC_CODEC_MSS2      VLC_FOURCC('M','S','S','2')
+#define VLC_CODEC_MSA1      VLC_FOURCC('M','S','A','1')
+#define VLC_CODEC_TSC2      VLC_FOURCC('T','S','C','2')
+#define VLC_CODEC_MTS2      VLC_FOURCC('M','T','S','2')
 
 /* Planar YUV 4:1:0 Y:V:U */
 #define VLC_CODEC_YV9       VLC_FOURCC('Y','V','U','9')
@@ -252,6 +257,7 @@
 #define VLC_CODEC_TRUEHD    VLC_FOURCC('t','r','h','d')
 #define VLC_CODEC_DVAUDIO   VLC_FOURCC('d','v','a','u')
 #define VLC_CODEC_SPEEX     VLC_FOURCC('s','p','x',' ')
+#define VLC_CODEC_OPUS      VLC_FOURCC('O','p','u','s')
 #define VLC_CODEC_VORBIS    VLC_FOURCC('v','o','r','b')
 #define VLC_CODEC_MACE3     VLC_FOURCC('M','A','C','3')
 #define VLC_CODEC_MACE6     VLC_FOURCC('M','A','C','6')
@@ -330,6 +336,9 @@
 #define VLC_CODEC_FI32      VLC_FOURCC('f','i','3','2')
 #define VLC_CODEC_TWINVQ    VLC_FOURCC('T','W','I','N')
 #define VLC_CODEC_BMVAUDIO  VLC_FOURCC('B','M','V','A')
+#define VLC_CODEC_ULEAD_DV_AUDIO_NTSC VLC_FOURCC('m','s',0x02,0x15)
+#define VLC_CODEC_ULEAD_DV_AUDIO_PAL  VLC_FOURCC('m','s',0x02,0x16)
+#define VLC_CODEC_INDEO_AUDIO VLC_FOURCC('m','s',0x04,0x02)
 
 /* Subtitle */
 #define VLC_CODEC_SPU       VLC_FOURCC('s','p','u',' ')

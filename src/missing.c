@@ -379,19 +379,6 @@ media_library_t* ml_Get ( vlc_object_t* p_this )
     return NULL;
 }
 
-media_library_t* ml_Create ( vlc_object_t *p_this, char* psz_name )
-{
-    VLC_UNUSED( p_this );
-    VLC_UNUSED( psz_name );
-    return NULL;
-}
-
-void ml_Destroy( vlc_object_t * p_this )
-{
-    VLC_UNUSED( p_this );
-    assert( 0 );
-}
-
 ml_media_t* media_New( media_library_t* p_ml, int id, ml_select_e select, bool reload )
 {
     VLC_UNUSED( p_ml );
@@ -432,14 +419,6 @@ ml_ftree_t* ml_FtreeSpec( ml_ftree_t* tree, ml_select_e crit, int limit,
     VLC_UNUSED( sort );
     assert( 0 );
     return NULL;
-}
-
-void ml_PlaySmartPlaylistBasedOn( media_library_t* p_ml,
-                                                ml_ftree_t* p_tree )
-{
-    VLC_UNUSED( p_ml );
-    VLC_UNUSED( p_tree );
-    assert( 0 );
 }
 
 void ml_DeletePersonTypeFromMedia( ml_media_t* p_media, const char *psz_role )

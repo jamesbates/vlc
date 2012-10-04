@@ -30,7 +30,6 @@
 #include "util/qt_dirs.hpp"
 
 #include <QTabWidget>
-#include <QGridLayout>
 #include <QRegExp>
 #include <QMenu>
 
@@ -119,8 +118,8 @@ OpenDialog::OpenDialog( QWidget *parent,
                                     QKeySequence( "Alt+P" ) );
     openButtonMenu->addAction( qtr( "&Stream" ), this, SLOT( stream() ) ,
                                     QKeySequence( "Alt+S" ) );
-    openButtonMenu->addAction( qtr( "&Convert" ), this, SLOT( transcode() ) ,
-                                    QKeySequence( "Alt+C" ) );
+    openButtonMenu->addAction( qtr( "C&onvert" ), this, SLOT( transcode() ) ,
+                                    QKeySequence( "Alt+O" ) );
 
     playButton->setMenu( openButtonMenu );
 
@@ -203,7 +202,7 @@ void OpenDialog::setMenuAction()
             playButton->setText( qtr( "&Stream" ) );
             break;
         case OPEN_AND_SAVE:
-            playButton->setText( qtr( "&Convert / Save" ) );
+            playButton->setText( qtr( "C&onvert / Save" ) );
             break;
         case OPEN_AND_ENQUEUE:
             playButton->setText( qtr( "&Enqueue" ) );

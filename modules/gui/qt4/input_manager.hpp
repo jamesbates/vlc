@@ -38,40 +38,6 @@
 #include <QObject>
 #include <QEvent>
 
-
-enum {
-    PositionUpdate_Type = QEvent::User + IMEventType + 1,
-    ItemChanged_Type,
-    ItemStateChanged_Type,
-    ItemTitleChanged_Type,
-    ItemRateChanged_Type,
-    VolumeChanged_Type,
-    SoundMuteChanged_Type,
-    ItemEsChanged_Type,
-    ItemTeletextChanged_Type,
-    InterfaceVoutUpdate_Type,
-    StatisticsUpdate_Type, /*10*/
-    InterfaceAoutUpdate_Type,
-    MetaChanged_Type,
-    NameChanged_Type,
-    InfoChanged_Type,
-    SynchroChanged_Type,
-    CachingEvent_Type,
-    BookmarksChanged_Type,
-    RecordingEvent_Type,
-    ProgramChanged_Type,
-    RandomChanged_Type,
-    LoopOrRepeatChanged_Type,
-    LeafToParent_Type,
-    EPGEvent_Type,
-/*    SignalChanged_Type, */
-
-    FullscreenControlToggle_Type = QEvent::User + IMEventType + 20,
-    FullscreenControlShow_Type,
-    FullscreenControlHide_Type,
-    FullscreenControlPlanHide_Type,
-};
-
 enum { NORMAL,    /* loop: 0, repeat: 0 */
        REPEAT_ONE,/* loop: 0, repeat: 1 */
        REPEAT_ALL,/* loop: 1, repeat: 0 */
@@ -79,38 +45,73 @@ enum { NORMAL,    /* loop: 0, repeat: 0 */
 
 class IMEvent : public QEvent
 {
-friend class InputManager;
-friend class MainInputManager;
-    public:
-    IMEvent( int type, input_item_t *p_input = NULL )
+public:
+    enum event_types {
+        PositionUpdate = QEvent::User + IMEventTypeOffset + 1,
+        ItemChanged,
+        ItemStateChanged,
+        ItemTitleChanged,
+        ItemRateChanged,
+        ItemEsChanged,
+        ItemTeletextChanged,
+        InterfaceVoutUpdate,
+        StatisticsUpdate, /*10*/
+        InterfaceAoutUpdate,
+        MetaChanged,
+        NameChanged,
+        InfoChanged,
+        SynchroChanged,
+        CachingEvent,
+        BookmarksChanged,
+        RecordingEvent,
+        ProgramChanged,
+        RandomChanged,
+        LoopOrRepeatChanged,
+        EPGEvent,
+    /*    SignalChanged, */
+
+        FullscreenControlToggle = QEvent::User + IMEventTypeOffset + 20,
+        FullscreenControlShow,
+        FullscreenControlHide,
+        FullscreenControlPlanHide,
+    };
+
+    IMEvent( event_types type, input_item_t *p_input = NULL )
         : QEvent( (QEvent::Type)(type) )
     {
         if( (p_item = p_input) != NULL )
             vlc_gc_incref( p_item );
     }
+
     virtual ~IMEvent()
     {
         if( p_item )
             vlc_gc_decref( p_item );
     }
 
+    input_item_t *item() const { return p_item; };
+
 private:
     input_item_t *p_item;
-};
-
-enum PLEventTypes
-{
-    PLItemAppended_Type = QEvent::User + PLEventType + 1,
-    PLItemRemoved_Type,
-    PLEmpty_Type
 };
 
 class PLEvent : public QEvent
 {
 public:
-    PLEvent( int t, int i, int p = 0 )
-        : QEvent( (QEvent::Type)(t) ), i_item(i), i_parent(p) {}
+    enum PLEventTypes
+    {
+        PLItemAppended = QEvent::User + PLEventTypeOffset + 1,
+        PLItemRemoved,
+        LeafToParent,
+        PLEmpty
+    };
 
+    PLEvent( PLEventTypes t, int i, int p = 0 )
+        : QEvent( (QEvent::Type)(t) ), i_item(i), i_parent(p) {}
+    int getItemId() const { return i_item; };
+    int getParentId() const { return i_parent; };
+
+private:
     /* Needed for "playlist-item*" and "leaf-to-parent" callbacks
      * !! Can be a input_item_t->i_id or a playlist_item_t->i_id */
     int i_item;
@@ -140,7 +141,8 @@ public:
     bool hasAudio();
     bool hasVideo() { return hasInput() && b_video; }
     bool hasVisualisation();
-    void requestArtUpdate();
+    void requestArtUpdate( input_item_t *p_item );
+    void setArt( input_item_t *p_item, QString fileUrl );
 
     QString getName() { return oldName; }
     static const QString decodeArtURL( input_item_t *p_item );
@@ -218,12 +220,14 @@ signals:
     /// Used to signal whether we should show navigation buttons
     void titleChanged( bool );
     void chapterChanged( bool );
+    void inputCanSeek( bool );
     /// Statistics are updated
     void statisticsUpdated( input_item_t* );
     void infoChanged( input_item_t* );
     void currentMetaChanged( input_item_t* );
     void metaChanged( input_item_t *);
-    void artChanged( QString );
+    void artChanged( QString ); /* current item art ( same as item == NULL ) */
+    void artChanged( input_item_t * );
     /// Play/pause status
     void playingStatusChanged( int );
     void recordingStateChanged( bool );
@@ -250,6 +254,7 @@ class MainInputManager : public QObject, public Singleton<MainInputManager>
 {
     Q_OBJECT
     friend class Singleton<MainInputManager>;
+
 public:
     input_thread_t *getInput() { return p_input; }
     InputManager *getIM() { return im; }
@@ -265,6 +270,7 @@ public:
     bool hasEmptyPlaylist();
 
     void requestVoutUpdate() { return im->UpdateVout(); }
+
 private:
     MainInputManager( intf_thread_t * );
     virtual ~MainInputManager();
@@ -275,6 +281,8 @@ private:
     input_thread_t          *p_input;
     intf_thread_t           *p_intf;
     QVLCBool random, repeat, loop;
+    QVLCFloat volume;
+    QVLCBool mute;
 
 public slots:
     void togglePlayPause();
@@ -288,13 +296,17 @@ public slots:
     void activatePlayQuit( bool );
 
     void loopRepeatLoopStatus();
+
 private slots:
     void notifyRandom( bool );
     void notifyRepeatLoop( bool );
+    void notifyVolume( float );
+    void notifyMute( bool );
+
 signals:
     void inputChanged( input_thread_t * );
-    void volumeChanged();
-    void soundMuteChanged();
+    void volumeChanged( float );
+    void soundMuteChanged( bool );
     void playlistItemAppended( int itemId, int parentId );
     void playlistItemRemoved( int itemId );
     void playlistNotEmpty( bool );

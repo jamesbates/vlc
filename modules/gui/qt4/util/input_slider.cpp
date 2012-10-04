@@ -62,6 +62,7 @@ SeekSlider::SeekSlider( Qt::Orientation q, QWidget *_parent, bool _static )
     mHandleOpacity = 1.0;
     chapters = NULL;
     mHandleLength = -1;
+    b_seekable = true;
 
     // prepare some static colors
     QPalette p = palette();
@@ -166,7 +167,7 @@ void SeekSlider::setPosition( float pos, int64_t time, int length )
         isSliding = false;
     }
     else
-        setEnabled( true );
+        setEnabled( b_seekable );
 
     if( !isSliding )
         setValue( (int)( pos * 1000.0 ) );
@@ -205,15 +206,16 @@ void SeekSlider::mouseReleaseEvent( QMouseEvent *event )
         return;
     }
     QSlider::mouseReleaseEvent( event );
-    if( b_seekPending )
+    if( b_seekPending && isEnabled() )
         updatePos();
 }
 
 void SeekSlider::mousePressEvent( QMouseEvent* event )
 {
     /* Right-click */
-    if( event->button() != Qt::LeftButton &&
-        event->button() != Qt::MidButton )
+    if ( !isEnabled() ||
+         ( event->button() != Qt::LeftButton && event->button() != Qt::MidButton )
+       )
     {
         QSlider::mousePressEvent( event );
         return;
@@ -266,6 +268,8 @@ void SeekSlider::mousePressEvent( QMouseEvent* event )
 
 void SeekSlider::mouseMoveEvent( QMouseEvent *event )
 {
+    if ( !isEnabled() ) return event->accept();
+
     if( isSliding )
     {
         setValue( QStyle::sliderValueFromPosition( MINIMUM, MAXIMUM, event->x() - handleLength() / 2, width() - handleLength(), false) );
@@ -298,7 +302,7 @@ void SeekSlider::mouseMoveEvent( QMouseEvent *event )
         }
 
         QPoint target( event->globalX() - ( event->x() - posX ),
-                  QWidget::mapToGlobal( pos() ).y() );
+                  QWidget::mapToGlobal( QPoint( 0, 0 ) ).y() );
         secstotimestr( psz_length, ( ( posX - margin ) * inputLength ) / ( size().width() - handleLength() ) );
         mTimeTooltip->setTip( target, psz_length, chapterLabel );
     }
@@ -308,7 +312,7 @@ void SeekSlider::mouseMoveEvent( QMouseEvent *event )
 void SeekSlider::wheelEvent( QWheelEvent *event )
 {
     /* Don't do anything if we are for somehow reason sliding */
-    if( !isSliding )
+    if( !isSliding && isEnabled() )
     {
         setValue( value() + event->delta() / 12 ); /* 12 = 8 * 15 / 10
          Since delta is in 1/8 of ° and mouse have steps of 15 °
@@ -324,7 +328,7 @@ void SeekSlider::enterEvent( QEvent * )
     /* Cancel the fade-out timer */
     hideHandleTimer->stop();
     /* Only start the fade-in if needed */
-    if( animHandle->direction() != QAbstractAnimation::Forward )
+    if( isEnabled() && animHandle->direction() != QAbstractAnimation::Forward )
     {
         /* If pause is called while not running Qt will complain */
         if( animHandle->state() == QAbstractAnimation::Running )
@@ -429,14 +433,15 @@ bool SeekSlider::isAnimationRunning() const
 #define WLENGTH   80 // px
 #define WHEIGHT   22  // px
 #define SOUNDMIN  0   // %
-#define SOUNDMAX  200 // % OR 400 ?
+#define SOUNDMAX  125 // % (+6dB)
 
-SoundSlider::SoundSlider( QWidget *_parent, int _i_step, bool b_hard,
+SoundSlider::SoundSlider( QWidget *_parent, int _i_step,
                           char *psz_colors )
                         : QAbstractSlider( _parent )
 {
-    f_step = ( _i_step * 100 ) / AOUT_VOLUME_MAX ;
-    setRange( SOUNDMIN, b_hard ? (2 * SOUNDMAX) : SOUNDMAX  );
+    f_step = (float)(_i_step * 10000)
+           / (float)((SOUNDMAX - SOUNDMIN) * AOUT_VOLUME_DEFAULT);
+    setRange( SOUNDMIN, SOUNDMAX );
     setMouseTracking( true );
     isSliding = false;
     b_mouseOutside = true;

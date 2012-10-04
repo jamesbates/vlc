@@ -3,7 +3,6 @@
 ###############################################################################
 
 AUTOMAKE_OPTIONS = subdir-objects
-SUBDIRS = . test
 
 NULL =
 EXTRA_DIST = \
@@ -26,7 +25,7 @@ pluginsinclude_HEADERS = \
 	../include/vlc_access.h \
 	../include/vlc_aout.h \
 	../include/vlc_aout_intf.h \
-	../include/vlc_aout_mixer.h \
+	../include/vlc_aout_volume.h \
 	../include/vlc_arrays.h \
 	../include/vlc_art_finder.h \
 	../include/vlc_atomic.h \
@@ -64,6 +63,7 @@ pluginsinclude_HEADERS = \
 	../include/vlc_messages.h \
 	../include/vlc_meta.h \
 	../include/vlc_media_library.h \
+	../include/vlc_mime.h \
 	../include/vlc_modules.h \
 	../include/vlc_mouse.h \
 	../include/vlc_mtime.h \
@@ -164,13 +164,19 @@ EXTRA_DIST += libvlc_win32_rc.rc.in
 
 lib_LTLIBRARIES = libvlccore.la
 
-AM_CPPFLAGS = $(INCICONV) \
+AM_CPPFLAGS = $(INCICONV) $(IDN_CFLAGS) \
 	-DMODULE_STRING=\"main\" \
 	-DLOCALEDIR=\"$(localedir)\" \
-	-DSYSCONFDIR=\"$(sysconfdir)\" \
 	-DPKGDATADIR=\"$(vlcdatadir)\" \
 	-DPKGLIBDIR=\"$(vlclibdir)\"
 AM_CFLAGS = $(CFLAGS_libvlccore)
+if HAVE_DYNAMIC_PLUGINS
+AM_CPPFLAGS += -DHAVE_DYNAMIC_PLUGINS
+endif
+if HAVE_DBUS
+AM_CPPFLAGS += -DHAVE_DBUS
+AM_CFLAGS += $(DBUS_CFLAGS)
+endif
 
 libvlccore_la_SOURCES = $(SOURCES_libvlc)
 libvlccore_la_LDFLAGS = \
@@ -182,11 +188,14 @@ libvlccore_la_LDFLAGS = \
 libvlccore_la_LIBADD = $(LIBS_libvlccore) \
 	../compat/libcompat.la \
 	$(LTLIBINTL) $(LTLIBICONV) \
-	$(SOCKET_LIBS) $(LIBDL) $(LIBM)
+	$(IDN_LIBS) $(LIBPTHREAD) $(SOCKET_LIBS) $(LIBDL) $(LIBM)
 libvlccore_la_DEPENDENCIES = libvlccore.sym
 if HAVE_WIN32
 libvlccore_la_DEPENDENCIES += libvlc_win32_rc.$(OBJEXT)
 libvlccore_la_LDFLAGS += -Wl,libvlc_win32_rc.$(OBJEXT) -avoid-version
+endif
+if HAVE_DBUS
+libvlccore_la_LIBADD += $(DBUS_LIBS)
 endif
 
 libvlc_win32_rc.$(OBJEXT): libvlc_win32_rc.rc
@@ -194,6 +203,7 @@ libvlc_win32_rc.$(OBJEXT): libvlc_win32_rc.rc
 
 EXTRA_libvlccore_la_SOURCES = \
 	$(SOURCES_libvlc_darwin) \
+	$(SOURCES_libvlc_android) \
 	$(SOURCES_libvlc_linux) \
 	$(SOURCES_libvlc_win32) \
 	$(SOURCES_libvlc_os2) \
@@ -205,13 +215,13 @@ EXTRA_libvlccore_la_SOURCES = \
 if HAVE_DARWIN
 libvlccore_la_SOURCES += $(SOURCES_libvlc_darwin)
 else
+if HAVE_ANDROID
+libvlccore_la_SOURCES += $(SOURCES_libvlc_android)
+else
 if HAVE_LINUX
 libvlccore_la_SOURCES += $(SOURCES_libvlc_linux)
 else
 if HAVE_WIN32
-libvlccore_la_SOURCES += $(SOURCES_libvlc_win32)
-else
-if HAVE_WINCE
 libvlccore_la_SOURCES += $(SOURCES_libvlc_win32)
 else
 if HAVE_SYMBIAN
@@ -239,20 +249,32 @@ endif
 
 SOURCES_libvlc_darwin = \
 	posix/darwin_dirs.c \
-	misc/atomic.c \
 	posix/filesystem.c \
 	posix/plugin.c \
 	posix/thread.c \
+	posix/timer.c \
 	posix/darwin_specific.c \
+	posix/rand.c \
+	$(NULL)
+
+SOURCES_libvlc_android = \
+	android/dirs.c \
+	posix/filesystem.c \
+	posix/plugin.c \
+	posix/thread.c \
+	posix/timer.c \
+	posix/linux_cpu.c \
+	posix/linux_specific.c \
+	posix/specific.c \
 	posix/rand.c \
 	$(NULL)
 
 SOURCES_libvlc_linux = \
 	posix/dirs.c \
-	misc/atomic.c \
 	posix/filesystem.c \
 	posix/plugin.c \
 	posix/thread.c \
+	posix/timer.c \
 	posix/linux_cpu.c \
 	posix/linux_specific.c \
 	posix/specific.c \
@@ -261,7 +283,6 @@ SOURCES_libvlc_linux = \
 
 SOURCES_libvlc_win32 = \
 	win32/dirs.c \
-	win32/atomic.c \
 	win32/filesystem.c \
 	win32/plugin.c \
 	win32/thread.c \
@@ -273,7 +294,6 @@ SOURCES_libvlc_win32 = \
 SOURCES_libvlc_symbian = \
 	symbian/path.cpp \
 	symbian/dirs.c \
-	misc/atomic.c \
 	win32/plugin.c \
 	posix/rand.c \
 	$(NULL)
@@ -281,9 +301,8 @@ SOURCES_libvlc_symbian = \
 SOURCES_libvlc_os2 = \
 	os2/getaddrinfo.c \
 	os2/dirs.c \
-	misc/atomic.c \
-	posix/filesystem.c \
-	posix/plugin.c \
+	os2/filesystem.c \
+	os2/plugin.c \
 	os2/thread.c \
 	os2/specific.c \
 	os2/rand.c \
@@ -291,9 +310,9 @@ SOURCES_libvlc_os2 = \
 
 SOURCES_libvlc_other = \
 	posix/dirs.c \
-	misc/atomic.c \
 	posix/filesystem.c \
 	posix/thread.c \
+	posix/timer.c \
 	posix/plugin.c \
 	posix/specific.c \
 	posix/rand.c \
@@ -390,8 +409,8 @@ SOURCES_libvlc_common = \
 	audio_output/dec.c \
 	audio_output/filters.c \
 	audio_output/input.c \
-	audio_output/mixer.c \
 	audio_output/output.c \
+	audio_output/volume.c \
 	audio_output/intf.c \
 	osd/osd.c \
 	osd/osd_text.c \
@@ -404,6 +423,7 @@ SOURCES_libvlc_common = \
 	text/charset.c \
 	text/strings.c \
 	text/unicode.c \
+	text/url.c \
 	text/filesystem.c \
 	text/iso_lang.c \
 	text/iso-639_def.h \
@@ -440,6 +460,7 @@ SOURCES_libvlc_common = \
 	misc/events.c \
 	misc/image.c \
 	misc/messages.c \
+	misc/mime.c \
 	misc/objects.c \
 	misc/variables.h \
 	misc/variables.c \
@@ -481,6 +502,38 @@ SOURCES_libvlc_vlm = \
 SOURCES_libvlc = \
 	$(SOURCES_libvlc_common) \
 	$(NULL)
+
+# Unit/regression tests
+#
+check_PROGRAMS = \
+	test_block \
+	test_dictionary \
+	test_i18n_atof \
+	test_md5 \
+	test_timer \
+	test_url \
+	test_utf8 \
+	test_xmlent \
+	test_headers
+
+TESTS = $(check_PROGRAMS)
+
+test_block_SOURCES = test/block_test.c
+test_block_LDADD = $(LDADD) $(LIBS_libvlccore)
+test_block_DEPENDENCIES =
+
+test_dictionary_SOURCES = test/dictionary.c
+test_i18n_atof_SOURCES = test/i18n_atof.c
+test_md5_SOURCES = test/md5.c
+test_timer_SOURCES = test/timer.c
+test_url_SOURCES = test/url.c
+test_utf8_SOURCES = test/utf8.c
+test_xmlent_SOURCES = test/xmlent.c
+test_headers_SOURCES = test/headers.c
+
+AM_LDFLAGS = -no-install
+LDADD = libvlccore.la \
+	../compat/libcompat.la
 
 ###############################################################################
 # GIT revision

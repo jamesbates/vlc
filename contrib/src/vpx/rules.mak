@@ -8,17 +8,19 @@ $(TARBALLS)/libvpx-$(VPX_VERSION).tar.bz2:
 
 .sum-vpx: libvpx-$(VPX_VERSION).tar.bz2
 
-ifneq ($(which bash),/bin/bash)
-PATCH_BASH_LOCATION=sed -i.orig s,^\#!/bin/bash,\#!`which bash`,g `grep -Rl ^\#!/bin/bash libvpx-$(VPX_VERSION)`
-else
-PATCH_BASH_LOCATION=true #bash is in /bin
-endif
-
 libvpx: libvpx-$(VPX_VERSION).tar.bz2 .sum-vpx
 	$(UNPACK)
 	$(APPLY) $(SRC)/vpx/libvpx-no-cross.patch
 	$(APPLY) $(SRC)/vpx/libvpx-no-abi.patch
-	$(PATCH_BASH_LOCATION)
+ifdef HAVE_MACOSX
+	$(APPLY) $(SRC)/vpx/libvpx-mac.patch
+	$(APPLY) $(SRC)/vpx/libvpx-mac-mountain-lion.patch
+endif
+ifneq ($(which bash),/bin/bash)
+	sed -i.orig \
+		s,^\#!/bin/bash,\#!`which bash`,g \
+		`grep -Rl ^\#!/bin/bash libvpx-$(VPX_VERSION)`
+endif
 	$(MOVE)
 
 DEPS_vpx =
@@ -84,6 +86,12 @@ VPX_CONF := \
 	--disable-vp8-decoder
 ifndef HAVE_WIN32
 VPX_CONF += --enable-pic
+endif
+ifdef HAVE_MACOSX
+VPX_CONF += --sdk-path=$(MACOSX_SDK)
+endif
+ifdef HAVE_IOS
+VPX_CONF += --sdk-path=$(SDKROOT)
 endif
 
 .vpx: libvpx

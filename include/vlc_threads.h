@@ -34,8 +34,7 @@
  *
  */
 
-#if defined( UNDER_CE )
-#elif defined( WIN32 )
+#if defined( WIN32 )
 #   include <process.h>                                         /* Win32 API */
 
 #elif defined( __OS2__ )                                        /* OS/2 API  */
@@ -82,7 +81,7 @@
 #   define VLC_THREAD_PRIORITY_OUTPUT  15
 #   define VLC_THREAD_PRIORITY_HIGHEST 20
 
-#elif defined(WIN32) || defined(UNDER_CE)
+#elif defined(WIN32)
 /* Define different priorities for WinNT/2K/XP and Win9x/Me */
 #   define VLC_THREAD_PRIORITY_LOW 0
 #   define VLC_THREAD_PRIORITY_INPUT \
@@ -159,18 +158,8 @@ typedef struct
 } vlc_cond_t;
 #define VLC_STATIC_COND { 0, 0 }
 
-typedef HANDLE  vlc_sem_t;
-
-typedef struct
-{
-    vlc_mutex_t   mutex;
-    vlc_cond_t    wait;
-    unsigned long readers;
-    DWORD         writer;
-} vlc_rwlock_t;
-#define VLC_STATIC_RWLOCK \
-    { VLC_STATIC_MUTEX, VLC_STATIC_COND, 0, 0 }
-
+typedef HANDLE vlc_sem_t;
+#define LIBVLC_NEED_RWLOCK
 typedef struct vlc_threadvar *vlc_threadvar_t;
 typedef struct vlc_timer *vlc_timer_t;
 
@@ -190,7 +179,6 @@ typedef struct
         HMTX hmtx;
     };
 } vlc_mutex_t;
-
 #define VLC_STATIC_MUTEX { false, { { false, 0 } } }
 
 typedef struct
@@ -198,30 +186,32 @@ typedef struct
     HEV      hev;
     unsigned clock;
 } vlc_cond_t;
-
 #define VLC_STATIC_COND { 0, 0 }
 
-typedef struct
-{
-    HEV  hev;
-    HMTX wait_mutex;
-    HMTX count_mutex;
-    int  count;
-} vlc_sem_t;
-
-typedef struct
-{
-    vlc_mutex_t   mutex;
-    vlc_cond_t    wait;
-    unsigned long readers;
-    int           writer;
-} vlc_rwlock_t;
-#define VLC_STATIC_RWLOCK \
-    { VLC_STATIC_MUTEX, VLC_STATIC_COND, 0, 0 }
-
+#define LIBVLC_NEED_SEMAPHORE
+#define LIBVLC_NEED_RWLOCK
 typedef struct vlc_threadvar *vlc_threadvar_t;
 typedef struct vlc_timer *vlc_timer_t;
 
+#endif
+
+#ifdef LIBVLC_NEED_SEMAPHORE
+typedef struct vlc_sem
+{
+    vlc_mutex_t lock;
+    vlc_cond_t  wait;
+    unsigned    value;
+} vlc_sem_t;
+#endif
+
+#ifdef LIBVLC_NEED_RWLOCK
+typedef struct vlc_rwlock
+{
+    vlc_mutex_t   mutex;
+    vlc_cond_t    wait;
+    long          state;
+} vlc_rwlock_t;
+# define VLC_STATIC_RWLOCK { VLC_STATIC_MUTEX, VLC_STATIC_COND, 0 }
 #endif
 
 #if defined( WIN32 ) && !defined ETIMEDOUT
@@ -456,7 +446,7 @@ static inline void vlc_spin_destroy (vlc_spinlock_t *spin)
     pthread_spin_destroy (spin);
 }
 
-#elif defined (WIN32) && !defined (UNDER_CE)
+#elif defined (WIN32)
 
 typedef CRITICAL_SECTION vlc_spinlock_t;
 
@@ -563,6 +553,7 @@ enum {
    VLC_XLIB_MUTEX,
    VLC_MOSAIC_MUTEX,
    VLC_HIGHLIGHT_MUTEX,
+   VLC_ATOMIC_MUTEX,
    /* Insert new entry HERE */
    VLC_MAX_MUTEX
 };

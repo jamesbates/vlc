@@ -50,18 +50,13 @@ See http://www.vdr-wiki.de/ and http://www.tvdr.de/ for more information.
 #include <fcntl.h>
 #ifdef HAVE_UNISTD_H
 #   include <unistd.h>
-#elif defined( WIN32 ) && !defined( UNDER_CE )
+#elif defined( WIN32 )
 #   include <io.h>
 #endif
 
 #include <ctype.h>
 #include <time.h>
 #include <errno.h>
-
-#if defined( WIN32 ) && !defined( UNDER_CE )
-#   undef lseek
-#   define lseek _lseeki64
-#endif
 
 #include <vlc_common.h>
 #include <vlc_plugin.h>

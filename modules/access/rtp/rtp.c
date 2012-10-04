@@ -125,7 +125,7 @@ vlc_module_begin ()
         change_integer_range (0, 32767)
     add_string ("rtp-dynamic-pt", NULL, RTP_DYNAMIC_PT_TEXT,
                 RTP_DYNAMIC_PT_LONGTEXT, true)
-        change_string_list (dynamic_pt_list, dynamic_pt_list_text, NULL)
+        change_string_list (dynamic_pt_list, dynamic_pt_list_text)
 
     /*add_shortcut ("sctp")*/
     add_shortcut ("dccp", "rtptcp", /* "tcp" is already taken :( */
@@ -254,6 +254,7 @@ static int Open (vlc_object_t *obj)
         return VLC_EGENERIC;
     }
 
+    p_sys->chained_demux = NULL;
 #ifdef HAVE_SRTP
     p_sys->srtp         = NULL;
 #endif
@@ -371,25 +372,12 @@ static int extract_port (char **phost)
 /**
  * Control callback
  */
-static int Control (demux_t *demux, int i_query, va_list args)
+static int Control (demux_t *demux, int query, va_list args)
 {
-    switch (i_query)
+    demux_sys_t *sys = demux->p_sys;
+
+    switch (query)
     {
-        case DEMUX_GET_POSITION:
-        {
-            float *v = va_arg (args, float *);
-            *v = 0.;
-            return VLC_SUCCESS;
-        }
-
-        case DEMUX_GET_LENGTH:
-        case DEMUX_GET_TIME:
-        {
-            int64_t *v = va_arg (args, int64_t *);
-            *v = 0;
-            return VLC_SUCCESS;
-        }
-
         case DEMUX_GET_PTS_DELAY:
         {
             int64_t *v = va_arg (args, int64_t *);
@@ -403,6 +391,27 @@ static int Control (demux_t *demux, int i_query, va_list args)
         {
             bool *v = (bool*)va_arg( args, bool * );
             *v = false;
+            return VLC_SUCCESS;
+        }
+    }
+
+    if (sys->chained_demux != NULL)
+        return stream_DemuxControlVa (sys->chained_demux, query, args);
+
+    switch (query)
+    {
+        case DEMUX_GET_POSITION:
+        {
+            float *v = va_arg (args, float *);
+            *v = 0.;
+            return VLC_SUCCESS;
+        }
+
+        case DEMUX_GET_LENGTH:
+        case DEMUX_GET_TIME:
+        {
+            int64_t *v = va_arg (args, int64_t *);
+            *v = 0;
             return VLC_SUCCESS;
         }
     }
@@ -443,14 +452,23 @@ void codec_decode (demux_t *demux, void *data, block_t *block)
 
 static void *stream_init (demux_t *demux, const char *name)
 {
-    return stream_DemuxNew (demux, name, demux->out);
+    demux_sys_t *p_sys = demux->p_sys;
+
+    if (p_sys->chained_demux != NULL)
+        return NULL;
+    p_sys->chained_demux = stream_DemuxNew (demux, name, demux->out);
+    return p_sys->chained_demux;
 }
 
 static void stream_destroy (demux_t *demux, void *data)
 {
+    demux_sys_t *p_sys = demux->p_sys;
+
     if (data)
+    {
         stream_Delete ((stream_t *)data);
-    (void)demux;
+        p_sys->chained_demux = NULL;
+    }
 }
 
 /* Send a packet to a chained demuxer */

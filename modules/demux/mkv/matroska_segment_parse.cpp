@@ -601,6 +601,10 @@ void matroska_segment_c::ParseTrackEntry( KaxTrackEntry *m )
         {
             EbmlMaster *tka = static_cast<EbmlMaster*>(l);
 
+            /* Initialize default values */
+            tk->fmt.audio.i_channels = 1;
+            tk->fmt.audio.i_rate = 8000;
+
             msg_Dbg( &sys.demuxer, "|   |   |   + Track Audio" );
 
             for( unsigned int j = 0; j < tka->ListSize(); j++ )
@@ -1001,7 +1005,10 @@ void matroska_segment_c::ParseAttachments( KaxAttachments *attachments )
     while( attachedFile && ( attachedFile->GetSize() > 0 ) )
     {
         KaxFileData  &img_data     = GetChild<KaxFileData>( *attachedFile );
-        attachment_c *new_attachment = new attachment_c( ToUTF8( UTFstring( GetChild<KaxFileName>( *attachedFile ) ) ),
+        char *psz_tmp_utf8 =  ToUTF8( UTFstring( GetChild<KaxFileName>( *attachedFile ) ) );
+        std::string attached_filename(psz_tmp_utf8);
+        free(psz_tmp_utf8);
+        attachment_c *new_attachment = new attachment_c( attached_filename,
                                                         GetChild<KaxMimeType>( *attachedFile ),
                                                         img_data.GetSize() );
 

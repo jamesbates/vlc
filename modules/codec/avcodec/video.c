@@ -1,5 +1,5 @@
 /*****************************************************************************
- * video.c: video decoder using the ffmpeg library
+ * video.c: video decoder using the libavcodec library
  *****************************************************************************
  * Copyright (C) 1999-2001 the VideoLAN team
  * $Id$
@@ -43,24 +43,21 @@
 #include <vlc_cpu.h>
 #include <assert.h>
 
-/* ffmpeg header */
-#ifdef HAVE_LIBAVCODEC_AVCODEC_H
-#   include <libavcodec/avcodec.h>
-#   ifdef HAVE_AVCODEC_VAAPI
-#       include <libavcodec/vaapi.h>
-#   endif
-#   ifdef HAVE_AVCODEC_DXVA2
-#       include <libavcodec/dxva2.h>
-#   endif
-#elif defined(HAVE_FFMPEG_AVCODEC_H)
-#   include <ffmpeg/avcodec.h>
-#else
-#   include <avcodec.h>
+#include <libavcodec/avcodec.h>
+#include <libavutil/mem.h>
+#ifdef HAVE_AVCODEC_VAAPI
+#    include <libavcodec/vaapi.h>
+#endif
+#ifdef HAVE_AVCODEC_DXVA2
+#    include <libavcodec/dxva2.h>
+#endif
+#ifdef HAVE_AVCODEC_VDA
+#    include <libavcodec/vda.h>
 #endif
 
 #include "avcodec.h"
 #include "va.h"
-#if defined(HAVE_AVCODEC_VAAPI) || defined(HAVE_AVCODEC_DXVA2)
+#if defined(HAVE_AVCODEC_VAAPI) || defined(HAVE_AVCODEC_DXVA2) || defined(HAVE_AVCODEC_VDA)
 #   define HAVE_AVCODEC_VA
 #endif
 
@@ -260,7 +257,7 @@ int InitVideoDec( decoder_t *p_dec, AVCodecContext *p_context,
     if( var_CreateGetBool( p_dec, "avcodec-fast" ) )
         p_sys->p_context->flags2 |= CODEC_FLAG2_FAST;
 
-    /* ***** ffmpeg frame skipping ***** */
+    /* ***** libavcodec frame skipping ***** */
     p_sys->b_hurry_up = var_CreateGetBool( p_dec, "avcodec-hurry-up" );
 
     switch( var_CreateGetInteger( p_dec, "avcodec-skip-frame" ) )
@@ -309,7 +306,7 @@ int InitVideoDec( decoder_t *p_dec, AVCodecContext *p_context,
     }
     p_sys->i_skip_idct = p_sys->p_context->skip_idct;
 
-    /* ***** ffmpeg direct rendering ***** */
+    /* ***** libavcodec direct rendering ***** */
     p_sys->b_direct_rendering = false;
     p_sys->i_direct_rendering_used = -1;
     if( var_CreateGetBool( p_dec, "avcodec-dr" ) &&
@@ -329,7 +326,7 @@ int InitVideoDec( decoder_t *p_dec, AVCodecContext *p_context,
         p_sys->b_direct_rendering = true;
     }
 
-    /* ffmpeg doesn't properly release old pictures when frames are skipped */
+    /* libavcodec doesn't properly release old pictures when frames are skipped */
     //if( p_sys->b_hurry_up ) p_sys->b_direct_rendering = false;
     if( p_sys->b_direct_rendering )
     {
@@ -375,13 +372,13 @@ int InitVideoDec( decoder_t *p_dec, AVCodecContext *p_context,
 #ifdef HAVE_AVCODEC_MT
         if( p_sys->p_context->thread_type & FF_THREAD_FRAME )
         {
-            msg_Warn( p_dec, "threaded frame decoding is not compatible with ffmpeg-hw, disabled" );
+            msg_Warn( p_dec, "threaded frame decoding is not compatible with libavcodec-hw, disabled" );
             p_sys->p_context->thread_type &= ~FF_THREAD_FRAME;
         }
         if( ( p_sys->p_context->thread_type & FF_THREAD_SLICE ) &&
             ( i_codec_id == CODEC_ID_MPEG1VIDEO || i_codec_id == CODEC_ID_MPEG2VIDEO ) )
         {
-            msg_Warn( p_dec, "threaded slice decoding is not compatible with ffmpeg-hw, disabled" );
+            msg_Warn( p_dec, "threaded slice decoding is not compatible with libavcodec-hw, disabled" );
             p_sys->p_context->thread_type &= ~FF_THREAD_SLICE;
         }
 #endif
@@ -577,7 +574,7 @@ picture_t *DecodeVideo( decoder_t *p_dec, block_t **pp_block )
     /*
      * Do the actual decoding now */
 
-    /* Don't forget that ffmpeg requires a little more bytes
+    /* Don't forget that libavcodec requires a little more bytes
      * that the real frame size */
     if( p_block->i_buffer > 0 )
     {
@@ -949,7 +946,7 @@ static void ffmpeg_CopyPicture( decoder_t *p_dec,
             for( i_line = 0; i_line < p_pic->p[i_plane].i_visible_lines;
                  i_line++ )
             {
-                vlc_memcpy( p_dst, p_src, i_size );
+                memcpy( p_dst, p_src, i_size );
                 p_src += i_src_stride;
                 p_dst += i_dst_stride;
             }
@@ -1167,6 +1164,9 @@ static enum PixelFormat ffmpeg_GetFormat( AVCodecContext *p_context,
 #ifdef HAVE_AVCODEC_DXVA2
             [PIX_FMT_DXVA2_VLD] = "PIX_FMT_DXVA2_VLD",
 #endif
+#ifdef HAVE_AVCODEC_VDA
+            [PIX_FMT_VDA_VLD] = "PIX_FMT_VDA_VLD",
+#endif
             [PIX_FMT_YUYV422] = "PIX_FMT_YUYV422",
             [PIX_FMT_YUV420P] = "PIX_FMT_YUV420P",
         };
@@ -1196,6 +1196,16 @@ static enum PixelFormat ffmpeg_GetFormat( AVCodecContext *p_context,
             p_sys->p_va = vlc_va_NewDxva2( VLC_OBJECT(p_dec), p_sys->i_codec_id );
             if( !p_sys->p_va )
                 msg_Warn( p_dec, "Failed to open DXVA2" );
+        }
+#endif
+
+#ifdef HAVE_AVCODEC_VDA
+        if( pi_fmt[i] == PIX_FMT_VDA_VLD )
+        {
+            msg_Dbg( p_dec, "Trying VDA" );
+            p_sys->p_va = vlc_va_NewVDA( VLC_OBJECT(p_dec), p_sys->i_codec_id, p_dec->fmt_in.p_extra, p_dec->fmt_in.i_extra );
+            if( !p_sys->p_va )
+                msg_Warn( p_dec, "Failed to open VDA" );
         }
 #endif
 

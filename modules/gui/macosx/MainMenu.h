@@ -1,7 +1,7 @@
 /*****************************************************************************
  * MainMenu.h: MacOS X interface module
  *****************************************************************************
- * Copyright (C) 2011 Felix Paul Kühne
+ * Copyright (C) 2011-2012 Felix Paul Kühne
  * $Id$
  *
  * Authors: Felix Paul Kühne <fkuehne -at- videolan -dot- org>
@@ -34,12 +34,14 @@
     BOOL b_nib_audioeffects_loaded;
     BOOL b_nib_tracksynchro_loaded;
     BOOL b_nib_bookmarks_loaded;
+    BOOL b_nib_convertandsave_loaded;
 
     id o_about;                 /* VLAboutBox     */
     id o_videoeffects;          /* VLCVideoEffects */
     id o_audioeffects;          /* VLCAudioEffects */
     id o_trackSynchronization;  /* VLCTrackSynchronization */
     id o_bookmarks;             /* VLCBookmarks */
+    id o_convertandsave;        /* VLCConvertAndSave */
 
     id o_extMgr;                /* Extensions Manager */
 
@@ -66,6 +68,7 @@
     IBOutlet NSMenuItem * o_mi_open_capture;
     IBOutlet NSMenuItem * o_mi_open_recent;
     IBOutlet NSMenuItem * o_mi_open_wizard;
+    IBOutlet NSMenuItem * o_mi_convertandsave;
 
     IBOutlet NSMenu * o_mu_edit;
     IBOutlet NSMenuItem * o_mi_cut;
@@ -73,6 +76,12 @@
     IBOutlet NSMenuItem * o_mi_paste;
     IBOutlet NSMenuItem * o_mi_clear;
     IBOutlet NSMenuItem * o_mi_select_all;
+
+    IBOutlet NSMenu * o_mu_view;
+    IBOutlet NSMenuItem * o_mi_toggleJumpButtons;
+    IBOutlet NSMenuItem * o_mi_togglePlaymodeButtons;
+    IBOutlet NSMenu * o_mu_playlistTableColumns;
+    NSMenu * o_mu_playlistTableColumnsContextMenu;
 
     IBOutlet NSMenu * o_mu_controls;
     IBOutlet NSMenuItem * o_mi_play;
@@ -190,6 +199,10 @@
     IBOutlet NSMenuItem * o_vmi_mute;
     IBOutlet NSMenuItem * o_vmi_fullscreen;
     IBOutlet NSMenuItem * o_vmi_snapshot;
+
+    // information for playlist table columns menu
+    NSDictionary * o_ptc_translation_dict;
+    NSArray * o_ptc_menuorder;
 }
 + (VLCMainMenu *)sharedInstance;
 
@@ -208,6 +221,12 @@
 - (IBAction)intfOpenNet:(id)sender;
 - (IBAction)intfOpenCapture:(id)sender;
 
+- (IBAction)toggleJumpButtons:(id)sender;
+- (IBAction)togglePlaymodeButtons:(id)sender;
+- (IBAction)togglePlaylistColumnTable:(id)sender;
+- (void)setPlaylistColumnTableState:(NSInteger)i_state forColumn:(NSString *)o_column;
+- (NSMenu *)setupPlaylistTableColumnsMenu;
+
 - (IBAction)toggleRecord:(id)sender;
 - (void)updateRecordState:(BOOL)b_value;
 - (IBAction)setPlaybackRate:(id)sender;
@@ -220,6 +239,7 @@
 - (IBAction)toggleFullscreenDevice:(id)sender;
 
 - (IBAction)showWizard:(id)sender;
+- (IBAction)showConvertAndSave:(id)sender;
 - (IBAction)showVideoEffects:(id)sender;
 - (IBAction)showAudioEffects:(id)sender;
 - (IBAction)showTrackSynchronization:(id)sender;

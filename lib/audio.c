@@ -27,6 +27,7 @@
 #endif
 
 #include <assert.h>
+#include <math.h>
 
 #include <vlc/libvlc.h>
 #include <vlc/libvlc_media.h>
@@ -66,65 +67,56 @@ static audio_output_t *GetAOut( libvlc_media_player_t *mp )
 libvlc_audio_output_t *
         libvlc_audio_output_list_get( libvlc_instance_t *p_instance )
 {
-    VLC_UNUSED( p_instance );
-    libvlc_audio_output_t *p_list = NULL,
-                          *p_actual = NULL,
-                          *p_previous = NULL;
-    module_t **module_list = module_list_get( NULL );
+    size_t count;
+    module_t **module_list = module_list_get( &count );
+    libvlc_audio_output_t *list = NULL;
 
-    for (size_t i = 0; module_list[i]; i++)
+    for (size_t i = 0; i < count; i++)
     {
-        module_t *p_module = module_list[i];
+        module_t *module = module_list[i];
 
-        if( module_provides( p_module, "audio output" ) )
+        if( !module_provides( module, "audio output" ) )
+            continue;
+
+        libvlc_audio_output_t *item = malloc( sizeof( *item ) );
+        if( unlikely(item == NULL) )
         {
-            if( p_actual == NULL)
-            {
-                p_actual = ( libvlc_audio_output_t * )
-                    malloc( sizeof( libvlc_audio_output_t ) );
-                if( p_actual == NULL )
-                {
-                    libvlc_printerr( "Not enough memory" );
-                    libvlc_audio_output_list_release( p_list );
-                    module_list_free( module_list );
-                    return NULL;
-                }
-                if( p_list == NULL )
-                {
-                    p_list = p_actual;
-                    p_previous = p_actual;
-                }
-            }
-            p_actual->psz_name = strdup( module_get_object( p_module ) );
-            p_actual->psz_description = strdup( module_get_name( p_module, true )  );
-            p_actual->p_next = NULL;
-            if( p_previous != p_actual ) /* not first item */
-                p_previous->p_next = p_actual;
-            p_previous = p_actual;
-            p_actual = p_actual->p_next;
+    error:
+            libvlc_printerr( "Not enough memory" );
+            libvlc_audio_output_list_release( list );
+            list = NULL;
+            break;
         }
-    }
 
+        item->psz_name = strdup( module_get_object( module ) );
+        item->psz_description = strdup( module_get_name( module, true ) );
+        if( unlikely(item->psz_name == NULL || item->psz_description == NULL) )
+        {
+            free( item );
+            goto error;
+        }
+        item->p_next = list;
+        list = item;
+    }
     module_list_free( module_list );
 
-    return p_list;
+    VLC_UNUSED( p_instance );
+    return list;
 }
 
 /********************************************
  * Free the list of available audio outputs
  ***********************************************/
-void libvlc_audio_output_list_release( libvlc_audio_output_t *p_list )
+void libvlc_audio_output_list_release( libvlc_audio_output_t *list )
 {
-    libvlc_audio_output_t *p_actual, *p_before;
-    p_actual = p_list;
-
-    while ( p_actual )
+    while( list != NULL )
     {
-        free( p_actual->psz_name );
-        free( p_actual->psz_description );
-        p_before = p_actual;
-        p_actual = p_before->p_next;
-        free( p_before );
+        libvlc_audio_output_t *next = list->p_next;
+
+        free( list->psz_name );
+        free( list->psz_description );
+        free( list );
+        list = next;
     }
 }
 
@@ -144,119 +136,71 @@ int libvlc_audio_output_set( libvlc_media_player_t *mp, const char *psz_name )
     return 0;
 }
 
-/****************************
- * Get count of devices.
- *****************************/
+libvlc_audio_output_device_t *
+libvlc_audio_output_device_list_get( libvlc_instance_t *p_instance,
+                                     const char *aout )
+{
+    char varname[32];
+    if( (size_t)snprintf( varname, sizeof(varname), "%s-output-device", aout )
+                                                           >= sizeof(varname) )
+        return NULL;
+
+    libvlc_audio_output_device_t *list = NULL, **pp = &list;
+    char **values, **texts;
+    ssize_t count = config_GetPszChoices( VLC_OBJECT(p_instance->p_libvlc_int),
+                                          varname, &values, &texts );
+    for( ssize_t i = 0; i < count; i++ )
+    {
+        libvlc_audio_output_device_t *item = malloc( sizeof(*item) );
+        if( unlikely(item == NULL) )
+            break;
+
+        *pp = item;
+        pp = &item->p_next;
+        item->psz_device = values[i];
+        item->psz_description = texts[i];
+    }
+
+    *pp = NULL;
+    free( texts );
+    free( values );
+    (void) p_instance;
+    return list;
+}
+
+void libvlc_audio_output_device_list_release( libvlc_audio_output_device_t *l )
+{
+    while( l != NULL )
+    {
+        libvlc_audio_output_device_t *next = l->p_next;
+
+        free( l->psz_description );
+        free( l->psz_device );
+        free( l );
+        l = next;
+    }
+}
+
 int libvlc_audio_output_device_count( libvlc_instance_t *p_instance,
                                       const char *psz_audio_output )
 {
-    char *psz_config_name;
-    if( !psz_audio_output )
-        return 0;
-    if( asprintf( &psz_config_name, "%s-audio-device", psz_audio_output ) == -1 )
-        return 0;
-
-    module_config_t *p_module_config = config_FindConfig(
-        VLC_OBJECT( p_instance->p_libvlc_int ), psz_config_name );
-
-    if( p_module_config && p_module_config->pf_update_list )
-    {
-        vlc_value_t val;
-        val.psz_string = strdup( p_module_config->value.psz );
-
-        p_module_config->pf_update_list(
-            VLC_OBJECT( p_instance->p_libvlc_int ), psz_config_name, val, val, NULL );
-        free( val.psz_string );
-        free( psz_config_name );
-
-        return p_module_config->i_list;
-    }
-
-    free( psz_config_name );
+    (void) p_instance; (void) psz_audio_output;
     return 0;
 }
 
-/********************************
- * Get long name of device
- *********************************/
-char * libvlc_audio_output_device_longname( libvlc_instance_t *p_instance,
-                                            const char *psz_audio_output,
-                                            int i_device )
+char *libvlc_audio_output_device_longname( libvlc_instance_t *p_instance,
+                                           const char *psz_audio_output,
+                                           int i_device )
 {
-    char *psz_config_name;
-    if( !psz_audio_output )
-        return NULL;
-    if( asprintf( &psz_config_name, "%s-audio-device", psz_audio_output ) == -1 )
-        return NULL;
-
-    module_config_t *p_module_config = config_FindConfig(
-        VLC_OBJECT( p_instance->p_libvlc_int ), psz_config_name );
-
-    if( p_module_config )
-    {
-        // refresh if there arent devices
-        if( p_module_config->i_list < 2 && p_module_config->pf_update_list )
-        {
-            vlc_value_t val;
-            val.psz_string = strdup( p_module_config->value.psz );
-
-            p_module_config->pf_update_list(
-                VLC_OBJECT( p_instance->p_libvlc_int ), psz_config_name, val, val, NULL );
-            free( val.psz_string );
-        }
-
-        if( i_device >= 0 && i_device < p_module_config->i_list )
-        {
-            free( psz_config_name );
-
-            if( p_module_config->ppsz_list_text[i_device] )
-                return strdup( p_module_config->ppsz_list_text[i_device] );
-            else
-                return strdup( p_module_config->ppsz_list[i_device] );
-        }
-    }
-
-    free( psz_config_name );
+    (void) p_instance; (void) psz_audio_output; (void) i_device;
     return NULL;
 }
 
-/********************************
- * Get id name of device
- *********************************/
-char * libvlc_audio_output_device_id( libvlc_instance_t *p_instance,
-                                      const char *psz_audio_output,
-                                      int i_device )
+char *libvlc_audio_output_device_id( libvlc_instance_t *p_instance,
+                                     const char *psz_audio_output,
+                                     int i_device )
 {
-    char *psz_config_name;
-    if( !psz_audio_output )
-        return NULL;
-    if( asprintf( &psz_config_name, "%s-audio-device", psz_audio_output ) == -1)
-        return NULL;
-
-    module_config_t *p_module_config = config_FindConfig(
-        VLC_OBJECT( p_instance->p_libvlc_int ), psz_config_name );
-
-    if( p_module_config )
-    {
-        // refresh if there arent devices
-        if( p_module_config->i_list < 2 && p_module_config->pf_update_list )
-        {
-            vlc_value_t val;
-            val.psz_string = strdup( p_module_config->value.psz );
-
-            p_module_config->pf_update_list(
-                VLC_OBJECT( p_instance->p_libvlc_int ), psz_config_name, val, val, NULL );
-            free( val.psz_string );
-        }
-
-        if( i_device >= 0 && i_device < p_module_config->i_list )
-        {
-            free( psz_config_name );
-            return strdup( p_module_config->ppsz_list[i_device] );
-        }
-    }
-
-    free( psz_config_name );
+    (void) p_instance; (void) psz_audio_output; (void) i_device;
     return NULL;
 }
 
@@ -308,47 +252,36 @@ void libvlc_audio_output_set_device_type( libvlc_media_player_t *mp,
     vlc_object_release( p_aout );
 }
 
-/*****************************************************************************
- * libvlc_audio_get_mute : Get the volume state, true if muted
- *****************************************************************************/
 void libvlc_audio_toggle_mute( libvlc_media_player_t *mp )
 {
-    aout_ToggleMute( mp, NULL );
+    aout_MuteToggle( mp );
 }
 
 int libvlc_audio_get_mute( libvlc_media_player_t *mp )
 {
-    return aout_IsMuted( VLC_OBJECT(mp) );
+    return aout_MuteGet( mp );
 }
 
 void libvlc_audio_set_mute( libvlc_media_player_t *mp, int mute )
 {
-    aout_SetMute( VLC_OBJECT(mp), NULL, !!mute );
+    aout_MuteSet( VLC_OBJECT(mp), mute != 0 );
 }
 
-/*****************************************************************************
- * libvlc_audio_get_volume : Get the current volume
- *****************************************************************************/
 int libvlc_audio_get_volume( libvlc_media_player_t *mp )
 {
-    unsigned volume = aout_VolumeGet( mp );
-
-    return (volume * 100 + AOUT_VOLUME_DEFAULT / 2) / AOUT_VOLUME_DEFAULT;
+    float vol = aout_VolumeGet( mp );
+    return ( vol >= 0.f ) ? lroundf( vol * 100.f ) : -1;
 }
 
-
-/*****************************************************************************
- * libvlc_audio_set_volume : Set the current volume
- *****************************************************************************/
 int libvlc_audio_set_volume( libvlc_media_player_t *mp, int volume )
 {
-    volume = (volume * AOUT_VOLUME_DEFAULT + 50) / 100;
-    if (volume < 0 || volume > AOUT_VOLUME_MAX)
+    float vol = volume / 100.f;
+    if (vol < 0.f)
     {
         libvlc_printerr( "Volume out of range" );
         return -1;
     }
-    aout_VolumeSet (mp, volume);
+    aout_VolumeSet (mp, vol);
     return 0;
 }
 
@@ -459,7 +392,7 @@ int libvlc_audio_get_channel( libvlc_media_player_t *mp )
     if( !p_aout )
         return 0;
 
-    int val = var_GetInteger( p_aout, "audio-channels" );
+    int val = var_GetInteger( p_aout, "stereo-mode" );
     vlc_object_release( p_aout );
     return val;
 }
@@ -475,7 +408,7 @@ int libvlc_audio_set_channel( libvlc_media_player_t *mp, int channel )
     if( !p_aout )
         return -1;
 
-    if( var_SetInteger( p_aout, "audio-channels", channel ) < 0 )
+    if( var_SetInteger( p_aout, "stereo-mode", channel ) < 0 )
     {
         libvlc_printerr( "Audio channel out of range" );
         ret = -1;

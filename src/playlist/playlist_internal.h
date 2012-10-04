@@ -82,6 +82,7 @@ typedef struct playlist_private_t
     vlc_thread_t thread; /**< engine thread */
     vlc_mutex_t lock; /**< dah big playlist global lock */
     vlc_cond_t signal; /**< wakes up the playlist engine thread */
+    bool     killed; /**< playlist is shutting down */
 
     int      i_last_playlist_id; /**< Last id to an item */
     bool     b_reset_currently_playing; /** Reset current item array */
@@ -148,6 +149,8 @@ int playlist_ItemRelease( playlist_item_t * );
 int playlist_NodeEmpty( playlist_t *, playlist_item_t *, bool );
 int playlist_DeleteItem( playlist_t * p_playlist, playlist_item_t *, bool);
 
+void ResetCurrentlyPlaying( playlist_t *p_playlist, playlist_item_t *p_cur );
+void ResyncCurrentIndex( playlist_t *p_playlist, playlist_item_t *p_cur );
 
 /**
  * @}
@@ -157,15 +160,15 @@ int playlist_DeleteItem( playlist_t * p_playlist, playlist_item_t *, bool);
 //#undef PLAYLIST_DEBUG2
 
 #ifdef PLAYLIST_DEBUG
- #define PL_DEBUG( msg, args... ) msg_Dbg( p_playlist, msg, ## args )
+ #define PL_DEBUG( ... ) msg_Dbg( p_playlist, __VA_ARGS__ )
  #ifdef PLAYLIST_DEBUG2
-  #define PL_DEBUG2( msg, args... ) msg_Dbg( p_playlist, msg, ## args )
+  #define PL_DEBUG2( msg, ... ) msg_Dbg( p_playlist, __VA_ARGS__ )
  #else
-  #define PL_DEBUG2( msg, args... ) {}
+  #define PL_DEBUG2( msg, ... ) {}
  #endif
 #else
- #define PL_DEBUG( msg, args ... ) {}
- #define PL_DEBUG2( msg, args... ) {}
+ #define PL_DEBUG( msg, ... ) {}
+ #define PL_DEBUG2( msg, ... ) {}
 #endif
 
 #define PLI_NAME( p ) p && p->p_input ? p->p_input->psz_name : "null"

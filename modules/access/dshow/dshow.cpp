@@ -36,6 +36,7 @@
 #include <inttypes.h>
 #include <list>
 #include <string>
+#include <assert.h>
 
 #include <vlc_common.h>
 #include <vlc_plugin.h>
@@ -71,8 +72,7 @@ static size_t EnumDeviceCaps( vlc_object_t *, IBaseFilter *,
                               AM_MEDIA_TYPE *mt, size_t );
 static bool ConnectFilters( vlc_object_t *, access_sys_t *,
                             IBaseFilter *, CaptureFilter * );
-static int FindDevicesCallback( vlc_object_t *, char const *,
-                                vlc_value_t, vlc_value_t, void * );
+static int FindDevices( vlc_object_t *, const char *, char ***, char *** );
 static int ConfigDevicesCallback( vlc_object_t *, char const *,
                                   vlc_value_t, vlc_value_t, void * );
 
@@ -87,12 +87,6 @@ static void ConfigTuner( vlc_object_t *, ICaptureGraphBuilder2 *,
 /*****************************************************************************
  * Module descriptor
  *****************************************************************************/
-static const char *const ppsz_vdev[] = { "", "none" };
-static const char *const ppsz_vdev_text[] = { N_("Default"), N_("None") };
-
-static const char *const ppsz_adev[] = { "", "none" };
-static const char *const ppsz_adev_text[] = { N_("Default"), N_("None") };
-
 static const int pi_tuner_input[] = { 0, 1, 2 };
 static const char *const ppsz_tuner_input_text[] =
     {N_("Default"), N_("Cable"), N_("Antenna")};
@@ -156,7 +150,7 @@ static const char *const ppsz_standards_list_text[] =
     "(eg. I420 (default), RV24, etc.)")
 #define FPS_TEXT N_("Video input frame rate")
 #define FPS_LONGTEXT N_( \
-    "Force the DirectShow video input to use a specific frame rate" \
+    "Force the DirectShow video input to use a specific frame rate " \
     "(eg. 0 means default, 25, 29.97, 50, 59.94, etc.)")
 #define CONFIG_TEXT N_("Device properties")
 #define CONFIG_LONGTEXT N_( \
@@ -228,13 +222,11 @@ vlc_module_begin ()
     set_subcategory( SUBCAT_INPUT_ACCESS )
 
     add_string( CFG_PREFIX "vdev", NULL, VDEV_TEXT, VDEV_LONGTEXT, false)
-        change_string_list( ppsz_vdev, ppsz_vdev_text, FindDevicesCallback )
-        change_action_add( FindDevicesCallback, N_("Refresh list") )
+        change_string_cb( FindDevices )
         change_action_add( ConfigDevicesCallback, N_("Configure") )
 
     add_string( CFG_PREFIX "adev", NULL, ADEV_TEXT, ADEV_LONGTEXT, false)
-        change_string_list( ppsz_adev, ppsz_adev_text, FindDevicesCallback )
-        change_action_add( FindDevicesCallback, N_("Refresh list") )
+        change_string_cb( FindDevices )
         change_action_add( ConfigDevicesCallback, N_("Configure") )
 
     add_string( CFG_PREFIX "size", NULL, SIZE_TEXT, SIZE_LONGTEXT, false)
@@ -417,7 +409,7 @@ static int CommonOpen( vlc_object_t *p_this, access_sys_t *p_sys,
     bool b_use_video = true;
 
     /* Initialize OLE/COM */
-    CoInitialize( 0 );
+    CoInitializeEx( NULL, COINIT_APARTMENTTHREADED );
 
     var_Create( p_this,  CFG_PREFIX "config", VLC_VAR_BOOL | VLC_VAR_DOINHERIT );
     var_Create( p_this,  CFG_PREFIX "tuner", VLC_VAR_BOOL | VLC_VAR_DOINHERIT );
@@ -1832,7 +1824,7 @@ static block_t *ReadCompressed( access_t *p_access )
         }
 
         sample.p_sample->GetPointer( &p_data );
-        vlc_memcpy( p_block->p_buffer, p_data, i_data_size );
+        memcpy( p_block->p_buffer, p_data, i_data_size );
         sample.p_sample->Release();
 
         /* The caller got what he wanted */
@@ -1921,7 +1913,7 @@ static int Demux( demux_t *p_demux )
 #endif
 
             p_block = block_New( p_demux, i_data_size );
-            vlc_memcpy( p_block->p_buffer, p_data, i_data_size );
+            memcpy( p_block->p_buffer, p_data, i_data_size );
             p_block->i_pts = p_block->i_dts = i_pts;
             sample.p_sample->Release();
 
@@ -2018,63 +2010,41 @@ static int DemuxControl( demux_t *p_demux, int i_query, va_list args )
 /*****************************************************************************
  * config variable callback
  *****************************************************************************/
-static int FindDevicesCallback( vlc_object_t *p_this, char const *psz_name,
-                               vlc_value_t, vlc_value_t, void * )
+static int FindDevices( vlc_object_t *p_this, const char *psz_name,
+                            char ***vp, char ***tp )
 {
-    module_config_t *p_item;
-    bool b_audio = false;
-    int i;
-
-    p_item = config_FindConfig( p_this, psz_name );
-    if( !p_item ) return VLC_SUCCESS;
-
-    if( !strcmp( psz_name, CFG_PREFIX "adev" ) ) b_audio = true;
-
-    /* Clear-up the current list */
-    if( p_item->i_list )
-    {
-        /* Keep the 2 first entries */
-        for( i = 2; i < p_item->i_list; i++ )
-        {
-            free( p_item->ppsz_list[i] );
-            free( p_item->ppsz_list_text[i] );
-        }
-        /* TODO: Remove when no more needed */
-        p_item->ppsz_list[i] = NULL;
-        p_item->ppsz_list_text[i] = NULL;
-    }
-    p_item->i_list = 2;
-
     /* Find list of devices */
     list<string> list_devices;
-
-    /* Initialize OLE/COM */
-    CoInitialize( 0 );
-
-    FindCaptureDevice( p_this, NULL, &list_devices, b_audio );
-
-    /* Uninitialize OLE/COM */
-    CoUninitialize();
-
-    if( list_devices.empty() ) return VLC_SUCCESS;
-
-    p_item->ppsz_list = (char**)xrealloc( p_item->ppsz_list,
-                          (list_devices.size()+3) * sizeof(char *) );
-    p_item->ppsz_list_text = (char**)xrealloc( p_item->ppsz_list_text,
-                          (list_devices.size()+3) * sizeof(char *) );
-
-    list<string>::iterator iter;
-    for( iter = list_devices.begin(), i = 2; iter != list_devices.end();
-         ++iter, i++ )
+    if( SUCCEEDED(CoInitializeEx( NULL, COINIT_APARTMENTTHREADED )) )
     {
-        p_item->ppsz_list[i] = strdup( iter->c_str() );
-        p_item->ppsz_list_text[i] = NULL;
-        p_item->i_list++;
-    }
-    p_item->ppsz_list[i] = NULL;
-    p_item->ppsz_list_text[i] = NULL;
+        bool b_audio = !strcmp( psz_name, CFG_PREFIX "adev" );
 
-    return VLC_SUCCESS;
+        FindCaptureDevice( p_this, NULL, &list_devices, b_audio );
+        CoUninitialize();
+    }
+
+    unsigned count = 2 + list_devices.size(), i = 2;
+    char **values = (char **)xmalloc( count * sizeof(*values) );
+    char **texts = (char **)xmalloc( count * sizeof(*texts) );
+
+    values[0] = strdup( "" );
+    texts[0] = strdup( N_("Default") );
+    values[1] = strdup( "none" );
+    texts[1] = strdup( N_("None") );
+
+    for( list<string>::iterator iter = list_devices.begin();
+         iter != list_devices.end();
+         ++iter )
+    {
+        assert( i < count );
+        values[i] = strdup( iter->c_str() );
+        texts[i] = strdup( iter->c_str() );
+        i++;
+    }
+
+    *vp = values;
+    *tp = texts;
+    return count;
 }
 
 static int ConfigDevicesCallback( vlc_object_t *p_this, char const *psz_name,
@@ -2085,11 +2055,12 @@ static int ConfigDevicesCallback( vlc_object_t *p_this, char const *psz_name,
     char *psz_device = NULL;
     int i_ret = VLC_SUCCESS;
 
+    if( FAILED(CoInitializeEx( NULL, COINIT_APARTMENTTHREADED )) )
+        return VLC_EGENERIC;
+
     if( !EMPTY_STR( newval.psz_string ) )
         psz_device = strdup( newval.psz_string );
 
-    /* Initialize OLE/COM */
-    CoInitialize( 0 );
 
     p_item = config_FindConfig( p_this, psz_name );
 
@@ -2136,9 +2107,7 @@ static int ConfigDevicesCallback( vlc_object_t *p_this, char const *psz_name,
         i_ret = VLC_EGENERIC;
     }
 
-    /* Uninitialize OLE/COM */
     CoUninitialize();
-
     free( psz_device );
     return i_ret;
 }

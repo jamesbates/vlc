@@ -68,7 +68,6 @@ src/audio_output/dec.c
 src/audio_output/filters.c
 src/audio_output/input.c
 src/audio_output/intf.c
-src/audio_output/mixer.c
 src/audio_output/output.c
 src/config/chain.c
 src/config/cmdline.c
@@ -184,7 +183,6 @@ lib/video.c
 lib/vlm.c
 
 # modules
-modules/3dnow/memcpy.c
 modules/access/alsa.c
 modules/access/attachment.c
 modules/access/avio.h
@@ -232,19 +230,14 @@ modules/access_output/dummy.c
 modules/access_output/file.c
 modules/access_output/http.c
 modules/access_output/livehttp.c
-modules/access_output/rtmp.c
 modules/access_output/shout.c
 modules/access_output/udp.c
 modules/access/pulse.c
-modules/access/pvr.c
 modules/access/qtcapture.m
 modules/access/rar/access.c
 modules/access/rar/rar.c
 modules/access/rar/rar.h
 modules/access/rar/stream.c
-modules/access/rtmp/access.c
-modules/access/rtmp/rtmp_amf_flv.c
-modules/access/rtmp/rtmp_amf_flv.h
 modules/access/rtp/input.c
 modules/access/rtp/rtp.c
 modules/access/rtp/rtp.h
@@ -285,7 +278,6 @@ modules/access/vcdx/vcdplayer.c
 modules/access/vcdx/vcdplayer.h
 modules/access/vdr.c
 modules/access/zip/zipstream.c
-modules/altivec/memcpy.c
 modules/arm_neon/audio_format.c
 modules/arm_neon/chroma_yuv.c
 modules/audio_filter/audiobargraph_a.c
@@ -301,7 +293,6 @@ modules/audio_filter/converter/a52tofloat32.c
 modules/audio_filter/converter/a52tospdif.c
 modules/audio_filter/converter/dtstofloat32.c
 modules/audio_filter/converter/dtstospdif.c
-modules/audio_filter/converter/fixed.c
 modules/audio_filter/converter/format.c
 modules/audio_filter/converter/mpgatofixed32.c
 modules/audio_filter/equalizer.c
@@ -325,8 +316,8 @@ modules/audio_filter/spatializer/revmodel.cpp
 modules/audio_filter/spatializer/revmodel.hpp
 modules/audio_filter/spatializer/spatializer.cpp
 modules/audio_filter/spatializer/tuning.h
-modules/audio_mixer/fixed32.c
 modules/audio_mixer/float32.c
+modules/audio_mixer/integer.c
 modules/audio_output/adummy.c
 modules/audio_output/alsa.c
 modules/audio_output/amem.c
@@ -340,6 +331,8 @@ modules/audio_output/opensles_android.c
 modules/audio_output/oss.c
 modules/audio_output/pulse.c
 modules/audio_output/sndio.c
+modules/audio_output/volume.h
+modules/audio_output/wasapi.c
 modules/audio_output/waveout.c
 modules/audio_output/windows_audio_common.h
 modules/codec/a52.c
@@ -404,7 +397,6 @@ modules/codec/x264.c
 modules/codec/zvbi.c
 modules/control/dbus/dbus.c
 modules/control/dbus/dbus_common.h
-modules/control/dbus/dbus.h
 modules/control/dbus/dbus_player.c
 modules/control/dbus/dbus_player.h
 modules/control/dbus/dbus_root.c
@@ -511,8 +503,6 @@ modules/demux/vobsub.c
 modules/demux/voc.c
 modules/demux/wav.c
 modules/demux/xa.c
-modules/gui/fbosd.c
-modules/gui/hildon/maemo.c
 modules/gui/macosx/about.h
 modules/gui/macosx/about.m
 modules/gui/macosx/AppleRemote.h
@@ -926,7 +916,6 @@ modules/misc/inhibit/mce.c
 modules/misc/inhibit/xdg.c
 modules/misc/inhibit/xscreensaver.c
 modules/misc/logger.c
-modules/misc/memcpy.c
 modules/misc/osd/osd_menu.c
 modules/misc/osd/osd_menu.h
 modules/misc/osd/parser.c
@@ -944,8 +933,6 @@ modules/misc/stats/encoder.c
 modules/misc/stats/stats.c
 modules/misc/stats/stats.h
 modules/misc/xml/libxml.c
-modules/mmxext/memcpy.c
-modules/mmx/memcpy.c
 modules/mux/asf.c
 modules/mux/avi.c
 modules/mux/dummy.c
@@ -961,10 +948,7 @@ modules/mux/mpjpeg.c
 modules/mux/ogg.c
 modules/mux/wav.c
 modules/notify/growl.m
-modules/notify/msn.c
 modules/notify/notify.c
-modules/notify/telepathy.c
-modules/notify/xosd.c
 modules/packetizer/copy.c
 modules/packetizer/dirac.c
 modules/packetizer/flac.c
@@ -988,6 +972,7 @@ modules/stream_filter/dash/dash.cpp
 modules/stream_filter/decomp.c
 modules/stream_filter/httplive.c
 modules/stream_filter/record.c
+modules/stream_filter/smooth/smooth.c
 modules/stream_out/autodel.c
 modules/stream_out/bridge.c
 modules/stream_out/delay.c
@@ -1096,7 +1081,7 @@ modules/video_filter/mosaic.c
 modules/video_filter/mosaic.h
 modules/video_filter/motionblur.c
 modules/video_filter/motiondetect.c
-modules/video_filter/opencv_example.c
+modules/video_filter/opencv_example.cpp
 modules/video_filter/opencv_wrapper.c
 modules/video_filter/osdmenu.c
 modules/video_filter/panoramix.c
