@@ -29,6 +29,7 @@
     intf_thread_t *p_intf;
     IBOutlet id o_window;
     IBOutlet id o_tableView;
+    IBOutlet id o_profile_pop;
 
     /* basic */
     IBOutlet id o_adjust_ckb;
@@ -126,17 +127,23 @@
     IBOutlet id o_addlogo_pos_pop;
     IBOutlet id o_addlogo_transparency_lbl;
     IBOutlet id o_addlogo_transparency_sld;
+    IBOutlet id o_anaglyph_ckb;
 }
 
 /* generic */
 + (VLCVideoEffects *)sharedInstance;
-- (IBAction)toggleWindow:(id)sender;
 - (void)resetValues;
 - (void)setVideoFilter: (char *)psz_name on:(BOOL)b_on;
 - (void)setVideoFilterProperty: (char *)psz_name forFilter: (char*)psz_filter integer: (int)i_value;
 - (void)setVideoFilterProperty: (char *)psz_name forFilter: (char*)psz_filter float: (float)f_value;
 - (void)setVideoFilterProperty: (char *)psz_name forFilter: (char *)psz_filter string: (char *)psz_value;
 - (void)setVideoFilterProperty: (char *)psz_name forFilter: (char *)psz_filter boolean: (BOOL)b_value;
+
+- (IBAction)toggleWindow:(id)sender;
+- (IBAction)profileSelectorAction:(id)sender;
+- (IBAction)addProfile:(id)sender;
+- (IBAction)removeProfile:(id)sender;
+
 
 /* basic */
 - (IBAction)enableAdjust:(id)sender;
@@ -184,4 +191,5 @@
 - (IBAction)addTextModifierChanged:(id)sender;
 - (IBAction)enableAddLogo:(id)sender;
 - (IBAction)addLogoModifierChanged:(id)sender;
+- (IBAction)enableAnaglyph:(id)sender;
 @end

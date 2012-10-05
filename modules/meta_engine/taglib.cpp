@@ -1,26 +1,26 @@
 /*****************************************************************************
  * taglib.cpp: Taglib tag parser/writer
  *****************************************************************************
- * Copyright (C) 2003-2011 the VideoLAN team
+ * Copyright (C) 2003-2011 VLC authors and VideoLAN
  * $Id$
  *
  * Authors: Clément Stenac <zorglub@videolan.org>
  *          Rafaël Carré <funman@videolanorg>
  *          Rémi Duraffort <ivoire@videolan.org>
  *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
+ * This program is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU Lesser General Public License as published by
+ * the Free Software Foundation; either version 2.1 of the License, or
  * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ * GNU Lesser General Public License for more details.
  *
- * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston MA 02110-1301, USA.
+ * You should have received a copy of the GNU Lesser General Public License
+ * along with this program; if not, write to the Free Software Foundation,
+ * Inc., 51 Franklin Street, Fifth Floor, Boston MA 02110-1301, USA.
  *****************************************************************************/
 
 #ifdef HAVE_CONFIG_H
@@ -32,6 +32,11 @@
 #include <vlc_demux.h>              /* demux_meta_t */
 #include <vlc_strings.h>            /* vlc_b64_decode_binary */
 #include <vlc_input.h>              /* for attachment_new */
+#include <vlc_url.h>                /* make_path */
+#include <vlc_mime.h>               /* mime type */
+#include <vlc_fs.h>
+
+#include <sys/stat.h>
 
 #ifdef WIN32
 # include <vlc_charset.h>
@@ -69,16 +74,10 @@
 #include <oggflacfile.h>
 #include "../demux/vorbis.h"
 
-#if TAGLIB_VERSION >= VERSION_INT(1,6,0)
-# define TAGLIB_HAVE_AIFF_WAV_H
-# include <aifffile.h>
-# include <wavfile.h>
-#else
-# include <id3v2tag.h>
-#endif
+#include <aifffile.h>
+#include <wavfile.h>
 
-#if TAGLIB_VERSION >= VERSION_INT(1,6,1) && defined(TAGLIB_WITH_MP4)
-# define TAGLIB_HAVE_MP4COVERTART_H
+#if defined(TAGLIB_WITH_MP4)
 # include <mp4file.h>
 #endif
 
@@ -108,6 +107,18 @@ vlc_module_end ()
 
 using namespace TagLib;
 
+static void ExtractTrackNumberValues( vlc_meta_t* p_meta, const char *psz_value )
+{
+    unsigned int i_trknum, i_trktot;
+    if( sscanf( psz_value, "%u/%u", &i_trknum, &i_trktot ) == 2 )
+    {
+        char psz_trck[11];
+        snprintf( psz_trck, sizeof( psz_trck ), "%u", i_trknum );
+        vlc_meta_SetTrackNum( p_meta, psz_trck );
+        snprintf( psz_trck, sizeof( psz_trck ), "%u", i_trktot );
+        vlc_meta_Set( p_meta, vlc_meta_TrackTotal, psz_trck );
+    }
+}
 
 /**
  * Read meta information from APE tags
@@ -115,18 +126,59 @@ using namespace TagLib;
  * @param p_demux_meta: the demuxer meta
  * @param p_meta: the meta
  */
-static void ReadMetaFromAPE( APE::Tag* tag, demux_meta_t*, vlc_meta_t* p_meta )
+static void ReadMetaFromAPE( APE::Tag* tag, demux_meta_t* p_demux_meta, vlc_meta_t* p_meta )
 {
     APE::Item item;
+
+    item = tag->itemListMap()["COVER ART (FRONT)"];
+    if( !item.isEmpty() )
+    {
+        input_attachment_t *p_attachment;
+
+        const ByteVector picture = item.value();
+        const char *p_data = picture.data();
+        unsigned i_data = picture.size();
+
+        size_t desc_len = strnlen(p_data, i_data);
+        if (desc_len < i_data) {
+            const char *psz_name = p_data;
+            p_data += desc_len + 1; /* '\0' */
+            i_data -= desc_len + 1;
+            msg_Dbg( p_demux_meta, "Found embedded art: %s (%s) is %u bytes",
+                     psz_name, "image/jpeg", i_data );
+
+            p_attachment = vlc_input_attachment_New( "cover", "image/jpeg",
+                                    psz_name, p_data, i_data );
+            if( p_attachment )
+                TAB_APPEND_CAST( (input_attachment_t**),
+                                 p_demux_meta->i_attachments, p_demux_meta->attachments,
+                                 p_attachment );
+
+            vlc_meta_SetArtURL( p_meta, "attachment://cover" );
+        }
+    }
+
 #define SET( keyName, metaName ) \
     item = tag->itemListMap()[keyName]; \
     if( !item.isEmpty() ) vlc_meta_Set##metaName( p_meta, item.toString().toCString( true ) ); \
 
+    SET( "ALBUM", Album );
+    SET( "ARTIST", Artist );
+    SET( "COMMENT", Description );
+    SET( "GENRE", Genre );
+    SET( "TITLE", Title );
     SET( "COPYRIGHT", Copyright );
     SET( "LANGUAGE", Language );
     SET( "PUBLISHER", Publisher );
 
 #undef SET
+
+    /* */
+    item = tag->itemListMap()["TRACK"];
+    if( !item.isEmpty() )
+    {
+        ExtractTrackNumberValues( p_meta, item.toString().toCString( true ) );
+    }
 }
 
 
@@ -221,6 +273,11 @@ static void ReadMetaFromId3v2( ID3v2::Tag* tag, demux_meta_t* p_demux_meta, vlc_
                 dynamic_cast<ID3v2::UserTextIdentificationFrame*>(*iter);
         if( !p_txxx )
             continue;
+        if( !strcmp( p_txxx->description().toCString( true ), "TRACKTOTAL" ) )
+        {
+            vlc_meta_Set( p_meta, vlc_meta_TrackTotal, p_txxx->fieldList().back().toCString( true ) );
+            continue;
+        }
         vlc_meta_AddExtra( p_meta, p_txxx->description().toCString( true ),
                            p_txxx->fieldList().back().toCString( true ) );
     }
@@ -238,6 +295,13 @@ static void ReadMetaFromId3v2( ID3v2::Tag* tag, demux_meta_t* p_demux_meta, vlc_
     SET( "TPUB", Publisher );
 
 #undef SET
+
+    /* */
+    list = tag->frameListMap()["TRCK"];
+    if( !list.isEmpty() )
+    {
+        ExtractTrackNumberValues( p_meta, (*list.begin())->toString().toCString( true ) );
+    }
 
     /* Preferred type of image
      * The 21 types are defined in id3v2 standard:
@@ -321,10 +385,14 @@ static void ReadMetaFromId3v2( ID3v2::Tag* tag, demux_meta_t* p_demux_meta, vlc_
 
         p_attachment = vlc_input_attachment_New( psz_name, psz_mime,
                                 psz_description, p_data, i_data );
-        if( p_attachment )
-            TAB_APPEND_CAST( (input_attachment_t**),
-                             p_demux_meta->i_attachments, p_demux_meta->attachments,
-                             p_attachment );
+        if( !p_attachment )
+        {
+            free( psz_description );
+            continue;
+        }
+        TAB_APPEND_CAST( (input_attachment_t**),
+                         p_demux_meta->i_attachments, p_demux_meta->attachments,
+                         p_attachment );
         free( psz_description );
 
         unsigned i_pic_type = p_apic->type();
@@ -414,7 +482,7 @@ static void ReadMetaFromXiph( Ogg::XiphComment* tag, demux_meta_t* p_demux_meta,
 }
 
 
-#ifdef TAGLIB_HAVE_MP4COVERTART_H
+#if defined(TAGLIB_WITH_MP4)
 /**
  * Read the meta information from mp4 specific tags
  * @param tag: the mp4 tag
@@ -465,7 +533,7 @@ static int ReadMeta( vlc_object_t* p_this)
     if( !psz_path )
         return VLC_ENOMEM;
 
-#if defined(WIN32) || defined (UNDER_CE)
+#if defined(WIN32)
     wchar_t *wpath = ToWide( psz_path );
     if( wpath == NULL )
     {
@@ -539,7 +607,7 @@ static int ReadMeta( vlc_object_t* p_this)
         else if( flac->xiphComment() )
             ReadMetaFromXiph( flac->xiphComment(), p_demux_meta, p_meta );
     }
-#ifdef TAGLIB_HAVE_MP4COVERTART_H
+#if defined(TAGLIB_WITH_MP4)
     else if( MP4::File *mp4 = dynamic_cast<MP4::File*>(f.file()) )
     {
         if( mp4->tag() )
@@ -567,7 +635,6 @@ static int ReadMeta( vlc_object_t* p_this)
         else if( Ogg::Vorbis::File* ogg_vorbis = dynamic_cast<Ogg::Vorbis::File*>(f.file()) )
             ReadMetaFromXiph( ogg_vorbis->tag(), p_demux_meta, p_meta );
     }
-#ifdef TAGLIB_HAVE_AIFF_WAV_H
     else if( dynamic_cast<RIFF::File*>(f.file()) )
     {
         if( RIFF::AIFF::File* riff_aiff = dynamic_cast<RIFF::AIFF::File*>(f.file()) )
@@ -575,7 +642,6 @@ static int ReadMeta( vlc_object_t* p_this)
         else if( RIFF::WAV::File* riff_wav = dynamic_cast<RIFF::WAV::File*>(f.file()) )
             ReadMetaFromId3v2( riff_wav->tag(), p_demux_meta, p_meta );
     }
-#endif
     else if( TrueAudio::File* trueaudio = dynamic_cast<TrueAudio::File*>(f.file()) )
     {
         if( trueaudio->ID3v2Tag() )
@@ -644,6 +710,76 @@ static void WriteMetaToId3v2( ID3v2::Tag* tag, input_item_t* p_item )
     WRITE( Publisher, "TPUB" );
 
 #undef WRITE
+
+    /* Write album art */
+    char *psz_url = input_item_GetArtworkURL( p_item );
+    if( psz_url == NULL )
+        return;
+
+    char *psz_path = make_path( psz_url );
+    free( psz_url );
+    if( psz_path == NULL )
+        return;
+
+    const char *psz_mime = vlc_mime_Ext2Mime( psz_path );
+
+    FILE *p_file = vlc_fopen( psz_path, "rb" );
+    if( p_file == NULL )
+    {
+        free( psz_path );
+        return;
+    }
+
+    struct stat st;
+    if( vlc_stat( psz_path, &st ) == -1 )
+    {
+        free( psz_path );
+        fclose( p_file );
+        return;
+    }
+    off_t file_size = st.st_size;
+
+    free( psz_path );
+
+    /* Limit picture size to 10MiB */
+    if( file_size > 10485760 )
+    {
+      fclose( p_file );
+      return;
+    }
+
+    char *p_buffer = new (std::nothrow) char[file_size];
+    if( p_buffer == NULL )
+    {
+        fclose( p_file );
+        return;
+    }
+
+    if( fread( p_buffer, 1, file_size, p_file ) != (unsigned)file_size )
+    {
+        fclose( p_file );
+        delete[] p_buffer;
+        return;
+    }
+    fclose( p_file );
+
+    ByteVector data( p_buffer, file_size );
+    delete[] p_buffer;
+
+    ID3v2::FrameList frames = tag->frameList( "APIC" );
+    ID3v2::AttachedPictureFrame *frame = NULL;
+    if( frames.isEmpty() )
+    {
+        frame = new TagLib::ID3v2::AttachedPictureFrame;
+        tag->addFrame( frame );
+    }
+    else
+    {
+        frame = static_cast<ID3v2::AttachedPictureFrame *>( frames.back() );
+    }
+
+    frame->setPicture( data );
+    frame->setMimeType( psz_mime );
 }
 
 
@@ -690,7 +826,7 @@ static int WriteMeta( vlc_object_t *p_this )
         return VLC_EGENERIC;
     }
 
-#if defined(WIN32) || defined (UNDER_CE)
+#if defined(WIN32)
     wchar_t *wpath = ToWide( p_export->psz_file );
     if( wpath == NULL )
         return VLC_EGENERIC;
@@ -778,7 +914,6 @@ static int WriteMeta( vlc_object_t *p_this )
         else if( Ogg::Vorbis::File* ogg_vorbis = dynamic_cast<Ogg::Vorbis::File*>(f.file()) )
             WriteMetaToXiph( ogg_vorbis->tag(), p_item );
     }
-#ifdef TAGLIB_HAVE_AIFF_WAV_H
     else if( dynamic_cast<RIFF::File*>(f.file()) )
     {
         if( RIFF::AIFF::File* riff_aiff = dynamic_cast<RIFF::AIFF::File*>(f.file()) )
@@ -786,7 +921,6 @@ static int WriteMeta( vlc_object_t *p_this )
         else if( RIFF::WAV::File* riff_wav = dynamic_cast<RIFF::WAV::File*>(f.file()) )
             WriteMetaToId3v2( riff_wav->tag(), p_item );
     }
-#endif
     else if( TrueAudio::File* trueaudio = dynamic_cast<TrueAudio::File*>(f.file()) )
     {
         if( trueaudio->ID3v2Tag() )

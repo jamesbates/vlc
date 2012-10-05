@@ -256,8 +256,8 @@ static int Send( sout_stream_t *p_stream, sout_stream_id_t *id,
  *****************************************************************************/
 typedef struct
 {
-    const char  *psz_muxer;
-    const char  *psz_extension;
+    const char  psz_muxer[4];
+    const char  psz_extension[4];
     int         i_es_max;
     vlc_fourcc_t codec[128];
 } muxer_properties_t;
@@ -305,8 +305,6 @@ static const muxer_properties_t p_muxers[] = {
 
     M( "mkv", "mkv", 32,        VLC_CODEC_H264, VLC_CODEC_VP8, VLC_CODEC_MP4V,
                                 VLC_CODEC_A52,  VLC_CODEC_MP4A, VLC_CODEC_VORBIS, VLC_CODEC_FLAC ),
-
-    M( NULL, NULL, 0, 0 )
 };
 #undef M
 
@@ -314,16 +312,23 @@ static int OutputNew( sout_stream_t *p_stream,
                       const char *psz_muxer, const char *psz_prefix, const char *psz_extension  )
 {
     sout_stream_sys_t *p_sys = p_stream->p_sys;
-    char *psz_file = NULL;
+    char *psz_file = NULL, *psz_tmp = NULL;
     char *psz_output = NULL;
     int i_count;
 
-    if( asprintf( &psz_file, "%s%s%s",
+    if( asprintf( &psz_tmp, "%s%s%s",
                   psz_prefix, psz_extension ? "." : "", psz_extension ? psz_extension : "" ) < 0 )
     {
-        psz_file = NULL;
         goto error;
     }
+
+    psz_file = config_StringEscape( psz_tmp );
+    if( !psz_file )
+    {
+        free( psz_tmp );
+        goto error;
+    }
+    free( psz_tmp );
 
     if( asprintf( &psz_output, "std{access=file,mux='%s',dst='%s'}",
                   psz_muxer, psz_file ) < 0 )
@@ -386,7 +391,7 @@ static void OutputStart( sout_stream_t *p_stream )
      * TODO we could insert transcode in a few cases like
      * s16l <-> s16b
      */
-    for( int i = 0; p_muxers[i].psz_muxer != NULL; i++ )
+    for( unsigned i = 0; i < sizeof(p_muxers) / sizeof(*p_muxers); i++ )
     {
         bool b_ok;
         if( p_sys->i_id > p_muxers[i].i_es_max )
@@ -421,9 +426,10 @@ static void OutputStart( sout_stream_t *p_stream )
      * keeps most of our stream */
     if( !psz_muxer || !psz_extension )
     {
-        static const char *ppsz_muxers[][2] = {
+        static const char ppsz_muxers[][2][4] = {
             { "avi", "avi" }, { "mp4", "mp4" }, { "ogg", "ogg" },
             { "asf", "asf" }, {  "ts",  "ts" }, {  "ps", "mpg" },
+            { "mkv", "mkv" },
 #if 0
             // XXX ffmpeg sefault really easily if you try an unsupported codec
             // mov and avi at least segfault
@@ -433,13 +439,12 @@ static void OutputStart( sout_stream_t *p_stream )
             { "avformat{mux=nsv}", "nsv" },
             { "avformat{mux=flv}", "flv" },
 #endif
-            { NULL, NULL }
         };
         int i_best = 0;
         int i_best_es = 0;
 
         msg_Warn( p_stream, "failed to find an adequate muxer, probing muxers" );
-        for( int i = 0; ppsz_muxers[i][0] != NULL; i++ )
+        for( unsigned i = 0; i < sizeof(ppsz_muxers) / sizeof(*ppsz_muxers); i++ )
         {
             char *psz_file;
             int i_es;

@@ -49,7 +49,7 @@ vlc_module_end ()
 /*****************************************************************************
  * Local prototypes.
  *****************************************************************************/
-static void Play( audio_output_t *, block_t * );
+static void Play( audio_output_t *, block_t *, mtime_t * );
 
 /*****************************************************************************
  * OpenAudio: open a dummy audio device
@@ -61,7 +61,8 @@ static int Open( vlc_object_t * p_this )
     p_aout->pf_play = Play;
     p_aout->pf_pause = NULL;
     p_aout->pf_flush = NULL;
-    aout_VolumeSoftInit( p_aout );
+    p_aout->volume_set = NULL;
+    p_aout->mute_set = NULL;
 
     if( AOUT_FMT_SPDIF( &p_aout->format )
      && var_InheritBool( p_this, "spdif" ) )
@@ -73,17 +74,15 @@ static int Open( vlc_object_t * p_this )
     else
         p_aout->format.i_format = HAVE_FPU ? VLC_CODEC_FL32 : VLC_CODEC_S16N;
 
-    /* Create the variable for the audio-device */
-    var_Create( p_aout, "audio-device", VLC_VAR_INTEGER | VLC_VAR_HASCHOICE );
-
     return VLC_SUCCESS;
 }
 
 /*****************************************************************************
  * Play: pretend to play a sound
  *****************************************************************************/
-static void Play( audio_output_t *aout, block_t *block )
+static void Play( audio_output_t *aout, block_t *block, mtime_t *drift )
 {
     block_Release( block );
     (void) aout;
+    (void) drift;
 }

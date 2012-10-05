@@ -313,7 +313,7 @@ libvlc_media_t *libvlc_media_new_location( libvlc_instance_t *p_instance,
 libvlc_media_t *libvlc_media_new_path( libvlc_instance_t *p_instance,
                                        const char *path )
 {
-    char *mrl = make_URI( path, "file" );
+    char *mrl = vlc_path2uri( path, "file" );
     if( unlikely(mrl == NULL) )
     {
         libvlc_printerr( "Not enough memory" );
@@ -475,8 +475,7 @@ void libvlc_media_set_meta( libvlc_media_t *p_md, libvlc_meta_t e_meta, const ch
 int libvlc_media_save_meta( libvlc_media_t *p_md )
 {
     assert( p_md );
-    vlc_object_t *p_obj = VLC_OBJECT(libvlc_priv(
-                            p_md->p_libvlc_instance->p_libvlc_int)->p_playlist);
+    vlc_object_t *p_obj = VLC_OBJECT(p_md->p_libvlc_instance->p_libvlc_int);
     return input_item_WriteMeta( p_obj, p_md->p_input_item ) == VLC_SUCCESS;
 }
 
@@ -592,8 +591,8 @@ libvlc_media_get_duration( libvlc_media_t * p_md )
 static int media_parse(libvlc_media_t *media)
 {
     /* TODO: fetcher and parser independent of playlist */
-    playlist_t *playlist =
-        libvlc_priv (media->p_libvlc_instance->p_libvlc_int)->p_playlist;
+#warning FIXME: remove pl_Get
+    playlist_t *playlist = pl_Get(media->p_libvlc_instance->p_libvlc_int);
 
     /* TODO: Fetch art on need basis. But how not to break compatibility? */
     playlist_AskForArtEnqueue(playlist, media->p_input_item );

@@ -34,6 +34,12 @@
 #include <vlc_plugin.h>
 #include <vlc_vout_display.h>
 #include <vlc_picture_pool.h>
+#if !defined(WIN32) && !defined(__APPLE__)
+# ifdef X_DISPLAY_MISSING
+#  error Xlib required due to XInitThreads
+# endif
+# include <vlc_xlib.h>
+#endif
 
 #include <caca.h>
 
@@ -57,7 +63,7 @@ vlc_module_end()
  *****************************************************************************/
 static picture_pool_t *Pool  (vout_display_t *, unsigned);
 static void           Prepare(vout_display_t *, picture_t *, subpicture_t *);
-static void           Display(vout_display_t *, picture_t *, subpicture_t *);
+static void    PictureDisplay(vout_display_t *, picture_t *, subpicture_t *);
 static int            Control(vout_display_t *, int, va_list);
 
 /* */
@@ -82,7 +88,14 @@ static int Open(vlc_object_t *object)
     vout_display_t *vd = (vout_display_t *)object;
     vout_display_sys_t *sys;
 
-#if defined(WIN32) && !defined(UNDER_CE)
+#if !defined(__APPLE__) && !defined(WIN32)
+# ifndef X_DISPLAY_MISSING
+    if (!vlc_xlib_init(object))
+        return VLC_EGENERIC;
+# endif
+#endif
+
+#if defined(WIN32)
     CONSOLE_SCREEN_BUFFER_INFO csbiInfo;
     SMALL_RECT rect;
     COORD coord;
@@ -180,7 +193,7 @@ static int Open(vlc_object_t *object)
 
     vd->pool    = Pool;
     vd->prepare = Prepare;
-    vd->display = Display;
+    vd->display = PictureDisplay;
     vd->control = Control;
     vd->manage  = Manage;
 
@@ -203,7 +216,7 @@ error:
 
         free(sys);
     }
-#if defined(WIN32) && !defined(UNDER_CE)
+#if defined(WIN32)
     FreeConsole();
 #endif
     return VLC_EGENERIC;
@@ -224,7 +237,7 @@ static void Close(vlc_object_t *object)
     caca_free_display(sys->dp);
     cucul_free_canvas(sys->cv);
 
-#if defined(WIN32) && !defined(UNDER_CE)
+#if defined(WIN32)
     FreeConsole();
 #endif
 
@@ -284,7 +297,7 @@ static void Prepare(vout_display_t *vd, picture_t *picture, subpicture_t *subpic
 /**
  * Display a picture
  */
-static void Display(vout_display_t *vd, picture_t *picture, subpicture_t *subpicture)
+static void PictureDisplay(vout_display_t *vd, picture_t *picture, subpicture_t *subpicture)
 {
     Refresh(vd);
     picture_Release(picture);

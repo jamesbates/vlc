@@ -2693,7 +2693,7 @@ msgstr "Листа жељених декодера"
 msgid ""
 "When several video formats are available, select one whose resolution is "
 "closest to (but not higher than) this setting, in number of lines. Use this "
-"option if you don't have enough CPU power or network bandwith to play higher "
+"option if you don't have enough CPU power or network bandwidth to play higher "
 "resolutions."
 msgstr ""
 
@@ -30816,14 +30816,6 @@ msgstr ""
 #, fuzzy
 #~ msgid "Automate picture coding mode"
 #~ msgstr "Однос снимања"
-
-#~ msgid ""
-#~ "This is the relative default size of the fonts that will be rendered on "
-#~ "the video. If absolute font size is set, relative size will be overriden."
-#~ msgstr ""
-#~ "Ово је релативна подразумевана величина фонтова који ће бити рендеровани "
-#~ "на видеу. Ако је подешена апсолутна величина фонта, релативна величина ће "
-#~ "бити преклопљена."
 
 #, fuzzy
 #~ msgid "SessionManager"

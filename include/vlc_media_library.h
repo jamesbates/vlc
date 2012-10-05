@@ -406,13 +406,13 @@ VLC_API media_library_t* ml_Get( vlc_object_t* p_this );
  * @param psz_name Name for the module
  * @return The ML object.
  */
-VLC_API media_library_t* ml_Create( vlc_object_t *p_this, char* psz_name );
+media_library_t* ml_Create( vlc_object_t *p_this, char* psz_name );
 
 /**
  * @brief Destructor for the Media library singleton
  * @param p_this Parent the ML object is attached to
  */
-VLC_API void ml_Destroy( vlc_object_t* p_this );
+void ml_Destroy( vlc_object_t* p_this );
 
 /**
  * @brief Control the Media Library
@@ -570,16 +570,16 @@ static inline void ml_FreePeople( ml_person_t *p_person )
  */
 static inline void ml_FreeMediaContent( ml_media_t *p_media )
 {
-    free( p_media->psz_uri );
-    free( p_media->psz_title );
-    free( p_media->psz_orig_title );
-    free( p_media->psz_cover );
-    free( p_media->psz_comment );
-    free( p_media->psz_extra );
-    free( p_media->psz_genre );
-    free( p_media->psz_album );
-    free( p_media->psz_preview );
-    free( p_media->psz_language );
+    FREENULL( p_media->psz_uri );
+    FREENULL( p_media->psz_title );
+    FREENULL( p_media->psz_orig_title );
+    FREENULL( p_media->psz_cover );
+    FREENULL( p_media->psz_comment );
+    FREENULL( p_media->psz_extra );
+    FREENULL( p_media->psz_genre );
+    FREENULL( p_media->psz_album );
+    FREENULL( p_media->psz_preview );
+    FREENULL( p_media->psz_language );
     ml_FreePeople( p_media->p_people );
     p_media->b_sparse = true;
     p_media->i_id = 0;
@@ -721,37 +721,38 @@ static inline int ml_CopyMedia( ml_media_t *b, ml_media_t *a )
     b->i_bitrate = a->i_bitrate;
     b->i_samplerate = a->i_samplerate;
     b->i_bpm = a->i_bpm;
-    free( b->psz_uri );
+    FREENULL( b->psz_uri );
     if( a->psz_uri )
         b->psz_uri = strdup( a->psz_uri );
-    free( b->psz_title );
+    FREENULL( b->psz_title );
     if( a->psz_title )
         b->psz_title = strdup( a->psz_title );
-    free( b->psz_orig_title );
+    FREENULL( b->psz_orig_title );
     if( a->psz_orig_title )
         b->psz_orig_title = strdup( a->psz_orig_title );
-    free( b->psz_album );
+    FREENULL( b->psz_album );
     if( a->psz_album )
         b->psz_album = strdup( a->psz_album );
-    free( b->psz_cover );
+    FREENULL( b->psz_cover );
     if( a->psz_cover )
         b->psz_cover = strdup( a->psz_cover );
-    free( b->psz_genre );
+    FREENULL( b->psz_genre );
     if( a->psz_genre )
         b->psz_genre = strdup( a->psz_genre );
-    free( b->psz_comment );
+    FREENULL( b->psz_comment );
     if( a->psz_comment )
         b->psz_comment = strdup( a->psz_comment );
-    free( b->psz_extra );
+    FREENULL( b->psz_extra );
     if( a->psz_extra )
         b->psz_extra = strdup( a->psz_extra );
-    free( b->psz_preview );
+    FREENULL( b->psz_preview );
     if( a->psz_preview )
         b->psz_preview = strdup( a->psz_preview );
-    free( b->psz_language );
+    FREENULL( b->psz_language );
     if( a->psz_language )
         b->psz_language = strdup( a->psz_language );
     ml_FreePeople( b->p_people );
+    b->p_people = NULL;
     if( a->p_people )        ml_CopyPersons( &( b->p_people ), a->p_people );
     ml_UnlockMedia( b );
     ml_UnlockMedia( a );
@@ -1169,16 +1170,6 @@ VLC_API ml_person_t *ml_GetPersonsFromMedia( media_library_t* p_ml,
  */
 VLC_API void ml_DeletePersonTypeFromMedia( ml_media_t* p_media,
                                                  const char *psz_role );
-
-
-/**
- * @brief Creates and adds the playlist based on a given find tree
- * @param p_ml Media library object
- * @param p_tree Find tree to create SELECT
- */
-
-VLC_API void ml_PlaySmartPlaylistBasedOn( media_library_t* p_ml,
-                                                ml_ftree_t* p_tree );
 
 
 /**

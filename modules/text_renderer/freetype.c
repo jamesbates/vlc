@@ -1,13 +1,14 @@
 /*****************************************************************************
  * freetype.c : Put text on the video, using freetype2
  *****************************************************************************
- * Copyright (C) 2002 - 2011 the VideoLAN team
+ * Copyright (C) 2002 - 2012 the VideoLAN team
  * $Id$
  *
  * Authors: Sigmund Augdal Helberg <dnumgis@videolan.org>
  *          Gildas Bazin <gbazin@videolan.org>
  *          Bernie Purcell <bitmap@videolan.org>
  *          Jean-Baptiste Kempf <jb@videolan.org>
+ *          Felix Paul Kühne <fkuehne@videolan.org>
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -57,6 +58,9 @@
 #elif defined( HAVE_MAEMO )
 # define DEFAULT_FONT_FILE "/usr/share/fonts/nokia/nosnb.ttf"
 # define DEFAULT_FAMILY "Nokia Sans Bold"
+#elif defined( __ANDROID__ )
+# define DEFAULT_FONT_FILE "/system/fonts/DroidSans-Bold.ttf"
+# define DEFAULT_FAMILY "Droid Sans Bold"
 #else
 # define DEFAULT_FONT_FILE "/usr/share/fonts/truetype/freefont/FreeSerifBold.ttf"
 # define DEFAULT_FAMILY "Serif Bold"
@@ -72,6 +76,14 @@
 #define FT_CEIL(X)      (((X + 63) & -64) >> 6)
 #ifndef FT_MulFix
  #define FT_MulFix(v, s) (((v)*(s))>>16)
+#endif
+
+/* apple stuff */
+#ifdef __APPLE__
+#include <Carbon/Carbon.h>
+#include <sys/param.h>                         /* for MAXPATHLEN */
+#undef HAVE_FONTCONFIG
+#define HAVE_STYLES
 #endif
 
 /* RTL */
@@ -322,11 +334,9 @@ struct filter_sys_t
     int            i_default_font_size;
     int            i_display_height;
     char*          psz_fontfamily;
-#ifdef HAVE_STYLES
     xml_reader_t  *p_xml;
 #ifdef WIN32
     char*          psz_win_fonts_path;
-#endif
 #endif
 
     input_attachment_t **pp_font_attachments;
@@ -497,6 +507,7 @@ static char* FontConfig_Select( FcConfig* config, const char* family,
     FcPattern *pat, *p_pat;
     FcChar8* val_s;
     FcBool val_b;
+    char *ret = NULL;
 
     /* Create a pattern and fills it */
     pat = FcPatternCreate();
@@ -553,14 +564,11 @@ static char* FontConfig_Select( FcConfig* config, const char* family,
                             "the requested one: '%s' != '%s'\n",
                             (const char*)val_s, family );   */
 
-    if( FcResultMatch != FcPatternGetString( p_pat, FC_FILE, 0, &val_s ) )
-    {
-        FcPatternDestroy( p_pat );
-        return NULL;
-    }
+    if( FcResultMatch == FcPatternGetString( p_pat, FC_FILE, 0, &val_s ) )
+        ret = strdup( (const char*)val_s );
 
     FcPatternDestroy( p_pat );
-    return strdup( (const char*)val_s );
+    return ret;
 }
 #endif
 
@@ -695,6 +703,87 @@ fail:
     }
 }
 #endif /* HAVE_WIN32 */
+
+#ifdef __APPLE__
+static char* MacLegacy_Select( filter_t *p_filter, const char* psz_fontname,
+                          bool b_bold, bool b_italic, int i_size, int *i_idx )
+{
+    VLC_UNUSED( b_bold );
+    VLC_UNUSED( b_italic );
+    VLC_UNUSED( i_size );
+    FSRef ref;
+    unsigned char path[MAXPATHLEN];
+    char * psz_path;
+
+    CFStringRef  cf_fontName;
+    ATSFontRef   ats_font_id;
+
+    *i_idx = 0;
+
+    if( psz_fontname == NULL )
+        return NULL;
+
+    msg_Dbg( p_filter, "looking for %s", psz_fontname );
+    cf_fontName = CFStringCreateWithCString( kCFAllocatorDefault, psz_fontname, kCFStringEncodingUTF8 );
+
+    ats_font_id = ATSFontFindFromName( cf_fontName, kATSOptionFlagsIncludeDisabledMask );
+
+    if ( ats_font_id == 0 || ats_font_id == 0xFFFFFFFFUL )
+    {
+        msg_Dbg( p_filter, "ATS couldn't find %s by name, checking family", psz_fontname );
+        ats_font_id = ATSFontFamilyFindFromName( cf_fontName, kATSOptionFlagsDefault );
+
+        if ( ats_font_id == 0 || ats_font_id == 0xFFFFFFFFUL )
+        {
+            msg_Dbg( p_filter, "ATS couldn't find either %s nor its family, checking PS name", psz_fontname );
+            ats_font_id = ATSFontFindFromPostScriptName( cf_fontName, kATSOptionFlagsDefault );
+
+            if ( ats_font_id == 0 || ats_font_id == 0xFFFFFFFFUL )
+            {
+                msg_Err( p_filter, "ATS couldn't find %s (no font name, family or PS name)", psz_fontname );
+                CFRelease( cf_fontName );
+                return NULL;
+            }
+        }
+    }
+    CFRelease( cf_fontName );
+
+    if ( noErr != ATSFontGetFileReference( ats_font_id, &ref ) )
+    {
+        msg_Err( p_filter, "ATS couldn't get file ref for %s", psz_fontname );
+        return NULL;
+    }
+
+    /* i_idx calculation by searching preceding fontIDs */
+    /* with same FSRef                                       */
+    {
+        ATSFontRef  id2 = ats_font_id - 1;
+        FSRef       ref2;
+
+        while ( id2 > 0 )
+        {
+            if ( noErr != ATSFontGetFileReference( id2, &ref2 ) )
+                break;
+            if ( noErr != FSCompareFSRefs( &ref, &ref2 ) )
+                break;
+
+            id2 --;
+        }
+        *i_idx = ats_font_id - ( id2 + 1 );
+    }
+
+    if ( noErr != FSRefMakePath( &ref, path, sizeof(path) ) )
+    {
+        msg_Err( p_filter, "failure when getting path from FSRef" );
+        return NULL;
+    }
+    msg_Dbg( p_filter, "found %s", path );
+
+    psz_path = strdup( (char *)path );
+
+    return psz_path;
+}
+#endif
 
 #endif /* HAVE_STYLES */
 
@@ -1533,7 +1622,6 @@ static int ProcessNodes( filter_t *p_filter,
                                                        STYLE_UNDERLINE |
                                                        STYLE_STRIKEOUT);
     }
-#ifdef HAVE_STYLES
     else
     {
         rv = PushFont( &p_fonts,
@@ -1543,7 +1631,6 @@ static int ProcessNodes( filter_t *p_filter,
                           ((p_sys->i_font_opacity & 0xff) << 24),
                        0x00ffffff );
     }
-#endif
     if( p_sys->b_font_bold )
         i_style_flags |= STYLE_BOLD;
 
@@ -1725,7 +1812,7 @@ static FT_Face LoadFace( filter_t *p_filter,
     if( !p_face )
     {
         int  i_idx = 0;
-        char *psz_fontfile;
+        char *psz_fontfile = NULL;
 #ifdef HAVE_FONTCONFIG
         psz_fontfile = FontConfig_Select( NULL,
                                           p_style->psz_fontname,
@@ -1733,6 +1820,8 @@ static FT_Face LoadFace( filter_t *p_filter,
                                           (p_style->i_style_flags & STYLE_ITALIC) != 0,
                                           -1,
                                           &i_idx );
+#elif defined( __APPLE__ )
+        psz_fontfile = MacLegacy_Select( p_filter, p_style->psz_fontname, false, false, -1, &i_idx );
 #elif defined( WIN32 )
         psz_fontfile = Win32_Select( p_filter,
                                     p_style->psz_fontname,
@@ -2355,7 +2444,6 @@ static int RenderCommon( filter_t *p_filter, subpicture_region_t *p_region_out,
 
     uint32_t *pi_k_durations   = NULL;
 
-#ifdef HAVE_STYLES
     if( b_html )
     {
         stream_t *p_sub = stream_MemoryNew( VLC_OBJECT(p_filter),
@@ -2413,7 +2501,6 @@ static int RenderCommon( filter_t *p_filter, subpicture_region_t *p_region_out,
         stream_Delete( p_sub );
     }
     else
-#endif
     {
         text_style_t *p_style;
         if( p_region_in->p_style )
@@ -2515,16 +2602,12 @@ static int RenderText( filter_t *p_filter, subpicture_region_t *p_region_out,
     return RenderCommon( p_filter, p_region_out, p_region_in, false, p_chroma_list );
 }
 
-#ifdef HAVE_STYLES
-
 static int RenderHtml( filter_t *p_filter, subpicture_region_t *p_region_out,
                        subpicture_region_t *p_region_in,
                        const vlc_fourcc_t *p_chroma_list )
 {
     return RenderCommon( p_filter, p_region_out, p_region_in, true, p_chroma_list );
 }
-
-#endif
 
 /*****************************************************************************
  * Create: allocates osd-text video thread output method
@@ -2545,9 +2628,7 @@ static int Create( vlc_object_t *p_this )
         return VLC_ENOMEM;
 
     p_sys->psz_fontfamily   = NULL;
-#ifdef HAVE_STYLES
     p_sys->p_xml            = NULL;
-#endif
     p_sys->p_face           = 0;
     p_sys->p_library        = 0;
     p_sys->i_font_size      = 0;
@@ -2623,6 +2704,8 @@ static int Create( vlc_object_t *p_this )
     /* */
     psz_fontfile = FontConfig_Select( NULL, psz_fontfamily, false, false,
                                       p_sys->i_default_font_size, &fontindex );
+#elif defined(__APPLE__)
+    psz_fontfile = MacLegacy_Select( p_filter, psz_fontfamily, false, false, 0, &fontindex );
 #elif defined(WIN32)
     psz_fontfile = Win32_Select( p_filter, psz_fontfamily, false, false,
                                  p_sys->i_default_font_size, &fontindex );
@@ -2684,11 +2767,7 @@ static int Create( vlc_object_t *p_this )
     p_sys->i_font_attachments = 0;
 
     p_filter->pf_render_text = RenderText;
-#ifdef HAVE_STYLES
     p_filter->pf_render_html = RenderHtml;
-#else
-    p_filter->pf_render_html = NULL;
-#endif
 
     LoadFontsFromAttachments( p_filter );
 
@@ -2727,10 +2806,12 @@ static void Destroy( vlc_object_t *p_this )
         free( p_sys->pp_font_attachments );
     }
 
-#ifdef HAVE_STYLES
     if( p_sys->p_xml ) xml_ReaderDelete( p_sys->p_xml );
-#endif
     free( p_sys->psz_fontfamily );
+
+#ifdef WIN32
+    free( p_sys->psz_win_fonts_path );
+#endif
 
     /* FcFini asserts calling the subfunction FcCacheFini()
      * even if no other library functions have been made since FcInit(),

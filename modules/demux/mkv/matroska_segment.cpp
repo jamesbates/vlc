@@ -23,11 +23,9 @@
  *****************************************************************************/
 
 #include "matroska_segment.hpp"
-
 #include "chapters.hpp"
-
 #include "demux.hpp"
-
+#include "util.hpp"
 #include "Ebml_parser.hpp"
 
 extern "C" {
@@ -87,6 +85,7 @@ matroska_segment_c::~matroska_segment_c()
     {
         delete tracks[i_track]->p_compression_data;
         es_format_Clean( &tracks[i_track]->fmt );
+        delete tracks[i_track]->p_sys;
         free( tracks[i_track]->p_extra_data );
         free( tracks[i_track]->psz_codec );
         delete tracks[i_track];
@@ -219,36 +218,41 @@ void matroska_segment_c::LoadCues( KaxCues *cues )
 }
 
 
-#define PARSE_TAG( type ) \
-    do { \
-    msg_Dbg( &sys.demuxer, "|   + " type ); \
-    ep->Down();                             \
-    while( ( el = ep->Get() ) != NULL )     \
-    {                                       \
-        msg_Dbg( &sys.demuxer, "|   |   + Unknown (%s)", typeid( *el ).name() ); \
-    }                                      \
-    ep->Up(); } while( 0 )
-
 static const struct {
     vlc_meta_type_t type;
     const char *key;
-} metadata_map[] = { {vlc_meta_Title,       "TITLE"},
-                     {vlc_meta_Artist,      "ARTIST"},
-                     {vlc_meta_Genre,       "GENRE"},
-                     {vlc_meta_Copyright,   "COPYRIGHT"},
-                     {vlc_meta_Description, "DESCRIPTION"},
-                     {vlc_meta_Publisher,   "PUBLISHER"},
-                     {vlc_meta_URL,         "URL"},
-                     {vlc_meta_TrackNumber, "PART_NUMBER"},
-                     {vlc_meta_Date,        "DATE_RELEASE"},
-                     {vlc_meta_Title,       NULL},
+    int target_type; /* 0 is valid for all target_type */
+} metadata_map[] = {
+                     {vlc_meta_Album,       "TITLE",         50},
+                     {vlc_meta_Title,       "TITLE",         0},
+                     {vlc_meta_Artist,      "ARTIST",        0},
+                     {vlc_meta_Genre,       "GENRE",         0},
+                     {vlc_meta_Copyright,   "COPYRIGHT",     0},
+                     {vlc_meta_TrackNumber, "PART_NUMBER",   0},
+                     {vlc_meta_Description, "DESCRIPTION",   0},
+                     {vlc_meta_Description, "COMMENT",       0},
+                     {vlc_meta_Rating,      "RATING",        0},
+                     {vlc_meta_Date,        "DATE_RELEASED", 0},
+                     {vlc_meta_Date,        "DATE_RELEASE",  0},
+                     {vlc_meta_Date,        "DATE_RECORDED", 0},
+                     {vlc_meta_URL,         "URL",           0},
+                     {vlc_meta_Publisher,   "PUBLISHER",     0},
+                     {vlc_meta_EncodedBy,   "ENCODED_BY",    0},
+                     {vlc_meta_TrackTotal,  "TOTAL_PARTS",   0},
+                     {vlc_meta_Title,       NULL,            0},
 };
 
-void matroska_segment_c::ParseSimpleTags( KaxTagSimple *tag )
+SimpleTag * matroska_segment_c::ParseSimpleTags( KaxTagSimple *tag, int target_type )
 {
     EbmlElement *el;
     EbmlParser *ep = new EbmlParser( &es, tag, &sys.demuxer );
-    char *k = NULL, *v = NULL;
+    SimpleTag * p_simple = new SimpleTag;
+
+    if( !p_simple )
+    {
+        msg_Err( &sys.demuxer, "Couldn't allocate memory for Simple Tag... ignoring it");
+        return NULL;
+    }
 
     if( !sys.meta )
         sys.meta = vlc_meta_New();
@@ -260,38 +264,70 @@ void matroska_segment_c::ParseSimpleTags( KaxTagSimple *tag )
         {
             KaxTagName &key = *(KaxTagName*)el;
             key.ReadData( es.I_O(), SCOPE_ALL_DATA );
-            k = strdup( UTFstring( key ).GetUTF8().c_str() );
+            p_simple->psz_tag_name = strdup( UTFstring( key ).GetUTF8().c_str() );
         }
-        if( MKV_IS_ID( el, KaxTagString ) )
+        else if( MKV_IS_ID( el, KaxTagString ) )
         {
             KaxTagString &value = *(KaxTagString*)el;
             value.ReadData( es.I_O(), SCOPE_ALL_DATA );
-            v = strdup( UTFstring( value ).GetUTF8().c_str() );
+            p_simple->p_value = strdup( UTFstring( value ).GetUTF8().c_str() );
         }
+        else if(  MKV_IS_ID( el, KaxTagLangue ) )
+        {
+            KaxTagLangue &language = *(KaxTagLangue*) el;
+            language.ReadData( es.I_O(), SCOPE_ALL_DATA );
+            p_simple->psz_lang = strdup( string( language ).c_str());
+        }
+        else if(  MKV_IS_ID( el, KaxTagDefault ) )
+        {
+            KaxTagDefault & dft = *(KaxTagDefault*) el;
+            dft.ReadData( es.I_O(), SCOPE_ALL_DATA );
+            p_simple->b_default = (bool) uint8( dft );
+        }
+        /*Tags can be nested*/
+        else if( MKV_IS_ID( el, KaxTagSimple) )
+        {
+            SimpleTag * p_st = ParseSimpleTags( (KaxTagSimple*)el, target_type );
+            if( p_st )
+                p_simple->sub_tags.push_back( p_st );
+        }
+        /*TODO Handle binary tags*/
     }
     delete ep;
 
-    if( !k || !v )
+    if( !p_simple->psz_tag_name || !p_simple->p_value )
     {
         msg_Warn( &sys.demuxer, "Invalid MKV SimpleTag found.");
-        return;
+        delete p_simple;
+        return NULL;
     }
 
     for( int i = 0; metadata_map[i].key; i++ )
     {
-        if( !strcmp( k, metadata_map[i].key ) )
+        if( !strcmp( p_simple->psz_tag_name, metadata_map[i].key ) &&
+            (metadata_map[i].target_type == 0 || target_type == metadata_map[i].target_type ) )
         {
-            vlc_meta_Set( sys.meta, metadata_map[i].type, v );
+            vlc_meta_Set( sys.meta, metadata_map[i].type, p_simple->p_value );
+            msg_Dbg( &sys.demuxer, "|   |   + Meta %s: %s", p_simple->psz_tag_name, p_simple->p_value);
             goto done;
         }
     }
-    msg_Dbg( &sys.demuxer, "|   |   + %s: %s", k, v);
-    vlc_meta_AddExtra( sys.meta, k, v );
+    msg_Dbg( &sys.demuxer, "|   |   + Meta %s: %s", p_simple->psz_tag_name, p_simple->p_value);
+    vlc_meta_AddExtra( sys.meta, p_simple->psz_tag_name, p_simple->p_value);
 done:
-    free( k );
-    free( v );
-    return;
+    return p_simple;
 }
+
+#define PARSE_TAG( type ) \
+    do { \
+    msg_Dbg( &sys.demuxer, "|   + " type ); \
+    ep->Down();                             \
+    while( ( el = ep->Get() ) != NULL )     \
+    {                                       \
+        msg_Dbg( &sys.demuxer, "|   |   + Unknown (%s)", typeid( *el ).name() ); \
+    }                                      \
+    ep->Up(); } while( 0 )
+
 
 void matroska_segment_c::LoadTags( KaxTags *tags )
 {
@@ -303,12 +339,75 @@ void matroska_segment_c::LoadTags( KaxTags *tags )
     {
         if( MKV_IS_ID( el, KaxTag ) )
         {
+            Tag * p_tag = new Tag;
+            if(!p_tag)
+            {
+                msg_Err( &sys.demuxer,"Couldn't allocate memory for tag... ignoring it");
+                continue;
+            }
             msg_Dbg( &sys.demuxer, "+ Tag" );
             ep->Down();
+            int target_type = 50;
             while( ( el = ep->Get() ) != NULL )
             {
                 if( MKV_IS_ID( el, KaxTagTargets ) )
-                    PARSE_TAG( "Targets" );
+                {
+                    msg_Dbg( &sys.demuxer, "|   + Targets" );
+                    ep->Down();
+                    while( ( el = ep->Get() ) != NULL )
+                    {
+                        if( MKV_IS_ID( el, KaxTagTargetTypeValue ) )
+                        {
+                            KaxTagTargetTypeValue &value = *(KaxTagTargetTypeValue*)el;
+                            value.ReadData( es.I_O() );
+
+                            msg_Dbg( &sys.demuxer, "|   |   + TargetTypeValue: %u", uint32(value));
+                            target_type = uint32(value);
+                        }
+                        if( MKV_IS_ID( el, KaxTagTrackUID ) )
+                        {
+                            p_tag->i_tag_type = TRACK_UID;
+                            KaxTagTrackUID &uid = *(KaxTagTrackUID*) el;
+                            uid.ReadData( es.I_O() );
+                            p_tag->i_uid = uint64( uid );
+                            msg_Dbg( &sys.demuxer, "|   |   + TrackUID: %"PRIu64, p_tag->i_uid);
+
+                        }
+                        if( MKV_IS_ID( el, KaxTagEditionUID ) )
+                        {
+                            p_tag->i_tag_type = EDITION_UID;
+                            KaxTagEditionUID &uid = *(KaxTagEditionUID*) el;
+                            uid.ReadData( es.I_O() );
+                            p_tag->i_uid = uint64( uid );
+                            msg_Dbg( &sys.demuxer, "|   |   + EditionUID: %"PRIu64, p_tag->i_uid);
+                        }
+                        if( MKV_IS_ID( el, KaxTagChapterUID ) )
+                        {
+                            p_tag->i_tag_type = CHAPTER_UID;
+                            KaxTagChapterUID &uid = *(KaxTagChapterUID*) el;
+                            uid.ReadData( es.I_O() );
+                            p_tag->i_uid = uint64( uid );
+                            msg_Dbg( &sys.demuxer, "|   |   + ChapterUID: %"PRIu64, p_tag->i_uid);
+                        }
+                        if( MKV_IS_ID( el, KaxTagAttachmentUID ) )
+                        {
+                            p_tag->i_tag_type = ATTACHMENT_UID;
+                            KaxTagAttachmentUID &uid = *(KaxTagAttachmentUID*) el;
+                            uid.ReadData( es.I_O() );
+                            p_tag->i_uid = uint64( uid );
+                            msg_Dbg( &sys.demuxer, "|   |   + AttachmentUID: %"PRIu64, p_tag->i_uid);
+                        }
+                    }
+                    ep->Up();
+                }
+                else if( MKV_IS_ID( el, KaxTagSimple ) )
+                {
+                    SimpleTag * p_simple =
+                        ParseSimpleTags( static_cast<KaxTagSimple*>( el ),
+                                         target_type );
+                    if( p_simple )
+                        p_tag->simple_tags.push_back( p_simple );
+                }
 #if 0 // not valid anymore
                 else if( MKV_IS_ID( el, KaxTagGeneral ) )
                     PARSE_TAG( "General" );
@@ -347,14 +446,13 @@ void matroska_segment_c::LoadTags( KaxTags *tags )
                     msg_Dbg( &sys.demuxer, "|   + Multi Title" );
                 }
 #endif
-                else if( MKV_IS_ID( el, KaxTagSimple ) )
-                    ParseSimpleTags( static_cast<KaxTagSimple*>( el ) );
                 else
                 {
                     msg_Dbg( &sys.demuxer, "|   + LoadTag Unknown (%s)", typeid( *el ).name() );
                 }
             }
             ep->Up();
+            this->tags.push_back(p_tag);
         }
         else
         {
@@ -379,11 +477,11 @@ void matroska_segment_c::InformationCreate( )
     {
         vlc_meta_SetTitle( sys.meta, psz_title );
     }
+#if 0
     if( psz_date_utc )
     {
         vlc_meta_SetDate( sys.meta, psz_date_utc );
     }
-#if 0
 
     if( psz_segment_filename )
     {
@@ -695,6 +793,9 @@ void matroska_segment_c::Seek( mtime_t i_date, mtime_t i_time_offset, int64_t i_
     int i_cat;
     bool b_has_key = false;
 
+    for( size_t i = 0; i < tracks.size(); i++)
+        tracks[i]->i_last_dts = VLC_TS_INVALID;
+
     if( i_global_position >= 0 )
     {
         /* Special case for seeking in files with no cues */
@@ -729,9 +830,9 @@ void matroska_segment_c::Seek( mtime_t i_date, mtime_t i_time_offset, int64_t i_
         }
     }
 
-#ifndef WIN32
+#if !defined(WIN32) && !defined(__ANDROID__)
     /* Don't try complex seek if we seek to 0 */
-    if( i_date == 0 )
+    if( i_date == 0 && i_time_offset == 0 )
     {
         es_out_Control( sys.demuxer.out, ES_OUT_SET_NEXT_DISPLAY_TIME, 0 );
         es_out_Control( sys.demuxer.out, ES_OUT_SET_PCR, VLC_TS_0 );
@@ -743,7 +844,7 @@ void matroska_segment_c::Seek( mtime_t i_date, mtime_t i_time_offset, int64_t i_
         sys.i_start_pts = 0;
         sys.i_pts = 0;
         sys.i_pcr = 0;
-        return;       
+        return;
     }
 #endif
 
@@ -791,7 +892,7 @@ void matroska_segment_c::Seek( mtime_t i_date, mtime_t i_time_offset, int64_t i_
                     {
                         spoint * tmp = sp;
                         sp = sp->p_next;
-                        delete tmp;                    
+                        delete tmp;
                     }
                     return;
                 }
@@ -812,11 +913,11 @@ void matroska_segment_c::Seek( mtime_t i_date, mtime_t i_time_offset, int64_t i_
     }
     /*Neither video nor audio track... no seek further*/
     if( unlikely( !p_first ) )
-        return; 
+        return;
 
     for(;;)
     {
-        while( i_pts < i_date )
+        do
         {
             bool b_key_picture;
             bool b_discardable_picture;
@@ -859,7 +960,7 @@ void matroska_segment_c::Seek( mtime_t i_date, mtime_t i_time_offset, int64_t i_
             }
 
             delete block;
-        }
+        } while( i_pts < i_date );
         if( b_has_key || !i_idx )
             break;
 
@@ -1285,14 +1386,45 @@ bool matroska_segment_c::Select( mtime_t i_start_time )
                     msg_Err( &sys.demuxer, "Invalid Real ExtraData 0x%4.4s", (char *)p );
                     p_tk->fmt.i_codec = VLC_FOURCC( 'u', 'n', 'd', 'f' );
                 }
-                else {
+                else
+                {
+                    real_audio_private * priv = (real_audio_private*) p_tk->p_extra_data;
                     if( !strcmp( p_tk->psz_codec, "A_REAL/COOK" ) )
+                    {
                         p_tk->fmt.i_codec = VLC_CODEC_COOK;
+                        p_tk->fmt.audio.i_blockalign = hton16(priv->sub_packet_size);
+                    }
                     else if( !strcmp( p_tk->psz_codec, "A_REAL/ATRC" ) )
                         p_tk->fmt.i_codec = VLC_CODEC_ATRAC3;
                     else if( !strcmp( p_tk->psz_codec, "A_REAL/28_8" ) )
                         p_tk->fmt.i_codec = VLC_CODEC_RA_288;
                     /* FIXME RALF and SIPR */
+                    uint16_t version = (uint16_t) hton16(priv->version);
+                    p_tk->p_sys =
+                        new Cook_PrivateTrackData( hton16(priv->sub_packet_h),
+                                                   hton16(priv->frame_size),
+                                                   hton16(priv->sub_packet_size));
+                    if( unlikely( !p_tk->p_sys ) )
+                        continue;
+
+                    if( unlikely( p_tk->p_sys->Init() ) )
+                        continue;
+
+                    if( version == 4 )
+                    {
+                        real_audio_private_v4 * v4 = (real_audio_private_v4*) priv;
+                        p_tk->fmt.audio.i_channels = hton16(v4->channels);
+                        p_tk->fmt.audio.i_bitspersample = hton16(v4->sample_size);
+                        p_tk->fmt.audio.i_rate = hton16(v4->sample_rate);
+                    }
+                    else if( version == 5 )
+                    {
+                        real_audio_private_v5 * v5 = (real_audio_private_v5*) priv;
+                        p_tk->fmt.audio.i_channels = hton16(v5->channels);
+                        p_tk->fmt.audio.i_bitspersample = hton16(v5->sample_size);
+                        p_tk->fmt.audio.i_rate = hton16(v5->sample_rate);
+                    }
+                    msg_Dbg(&sys.demuxer, "%d channels %d bits %d Hz",p_tk->fmt.audio.i_channels, p_tk->fmt.audio.i_bitspersample, p_tk->fmt.audio.i_rate);
 
                     fill_extra_data( p_tk, p_tk->fmt.i_codec == VLC_CODEC_RA_288 ? 0 : 78);
                 }
@@ -1550,7 +1682,7 @@ int matroska_segment_c::BlockGet( KaxBlock * & pp_block, KaxSimpleBlock * & pp_s
 
                 ctc.ReadData( es.I_O(), SCOPE_ALL_DATA );
                 cluster->InitTimecode( uint64( ctc ), i_timescale );
- 
+
                 /* add it to the index */
                 if( i_index == 0 ||
                     ( i_index > 0 &&
@@ -1624,3 +1756,17 @@ int matroska_segment_c::BlockGet( KaxBlock * & pp_block, KaxSimpleBlock * & pp_s
     }
 }
 
+SimpleTag::~SimpleTag()
+{
+    free(psz_tag_name);
+    free(psz_lang);
+    free(p_value);
+    for(size_t i = 0; i < sub_tags.size(); i++)
+        delete sub_tags[i];
+}
+
+Tag::~Tag()
+{
+    for(size_t i = 0; i < simple_tags.size(); i++)
+        delete simple_tags[i];
+}

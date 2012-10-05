@@ -36,6 +36,7 @@
 
 #include <vlc_filter.h>
 #include <vlc_block.h>
+#include <vlc_fs.h>
 
 #include <vlc_strings.h>
 
@@ -46,7 +47,7 @@ static int  CreateFilter ( vlc_object_t * );
 static void DestroyFilter( vlc_object_t * );
 static subpicture_t *Filter( filter_t *, mtime_t );
 
-
+static char *MarqueeReadFile( filter_t *, const char * );
 static int MarqueeCallback( vlc_object_t *p_this, char const *psz_var,
                             vlc_value_t oldval, vlc_value_t newval,
                             void *p_data );
@@ -73,14 +74,14 @@ struct filter_sys_t
     int i_pos; /* permit relative positioning (top, bottom, left, right, center) */
     int i_timeout;
 
-    char *psz_marquee;    /* marquee string */
+    char *format; /**< marquee text format */
+    char *filepath; /**< marquee file path */
+    char *message; /**< marquee plain text */
 
     text_style_t *p_style; /* font control */
 
     mtime_t last_time;
     mtime_t i_refresh;
-
-    bool b_need_update;
 };
 
 #define MSG_TEXT N_("Text")
@@ -100,6 +101,8 @@ struct filter_sys_t
     "$N = name, $O = audio language, $P = position (in %), $R = rate, " \
     "$S = audio sample rate (in kHz), " \
     "$T = time, $U = publisher, $V = volume, $_ = new line) ")
+#define FILE_TEXT N_("Text file")
+#define FILE_LONGTEXT N_("File to read the marquee text from.")
 #define POSX_TEXT N_("X offset")
 #define POSX_LONGTEXT N_("X offset, from the left screen edge." )
 #define POSY_TEXT N_("Y offset")
@@ -153,6 +156,7 @@ vlc_module_begin ()
     set_subcategory( SUBCAT_VIDEO_SUBPIC )
     add_string( CFG_PREFIX "marquee", "VLC", MSG_TEXT, MSG_LONGTEXT,
                 false )
+    add_loadfile( CFG_PREFIX "file", NULL, FILE_TEXT, FILE_LONGTEXT, true )
 
     set_section( N_("Position"), NULL )
     add_integer( CFG_PREFIX "x", 0, POSX_TEXT, POSX_LONGTEXT, true )
@@ -210,7 +214,6 @@ static int CreateFilter( vlc_object_t *p_this )
     p_sys->stor = var_CreateGet##type##Command( p_filter, var ); \
     var_AddCallback( p_filter, var, MarqueeCallback, p_sys );
 
-    p_sys->b_need_update = true;
     CREATE_VAR( i_xoff, Integer, "marq-x" );
     CREATE_VAR( i_yoff, Integer, "marq-y" );
     CREATE_VAR( i_timeout,Integer, "marq-timeout" );
@@ -218,7 +221,9 @@ static int CreateFilter( vlc_object_t *p_this )
                                                            "marq-refresh" );
     var_AddCallback( p_filter, "marq-refresh", MarqueeCallback, p_sys );
     CREATE_VAR( i_pos, Integer, "marq-position" );
-    CREATE_VAR( psz_marquee, String, "marq-marquee" );
+    CREATE_VAR( format, String, "marq-marquee" );
+    p_sys->filepath = var_InheritString( p_filter, "marq-file" );
+    p_sys->message = NULL;
     p_sys->p_style->i_font_alpha = var_CreateGetIntegerCommand( p_filter,
                                                             "marq-opacity" );
     var_AddCallback( p_filter, "marq-opacity", MarqueeCallback, p_sys );
@@ -255,7 +260,9 @@ static void DestroyFilter( vlc_object_t *p_this )
 
     vlc_mutex_destroy( &p_sys->lock );
     text_style_Delete( p_sys->p_style );
-    free( p_sys->psz_marquee );
+    free( p_sys->format );
+    free( p_sys->filepath );
+    free( p_sys->message );
     free( p_sys );
 }
 
@@ -273,8 +280,27 @@ static subpicture_t *Filter( filter_t *p_filter, mtime_t date )
     vlc_mutex_lock( &p_sys->lock );
     if( p_sys->last_time + p_sys->i_refresh > date )
         goto out;
-    if( !p_sys->b_need_update )
+
+    if( p_sys->filepath != NULL )
+    {
+        char *fmt = MarqueeReadFile( p_filter, p_sys->filepath );
+        if( fmt != NULL )
+        {
+            free( p_sys->format );
+            p_sys->format = fmt;
+        }
+    }
+
+    char *msg = str_format_time( p_sys->format ? p_sys->format : "" );
+    if( unlikely( msg == NULL ) )
         goto out;
+    if( p_sys->message != NULL && !strcmp( msg, p_sys->message ) )
+    {
+        free( msg );
+        goto out;
+    }
+    free( p_sys->message );
+    p_sys->message = msg;
 
     p_spu = filter_NewSubpicture( p_filter );
     if( !p_spu )
@@ -295,11 +321,7 @@ static subpicture_t *Filter( filter_t *p_filter, mtime_t date )
 
     p_sys->last_time = date;
 
-    if( !strchr( p_sys->psz_marquee, '%' )
-     && !strchr( p_sys->psz_marquee, '$' ) )
-        p_sys->b_need_update = false;
-
-    p_spu->p_region->psz_text = str_format( p_filter, p_sys->psz_marquee );
+    p_spu->p_region->psz_text = strdup( msg );
     p_spu->i_start = date;
     p_spu->i_stop  = p_sys->i_timeout == 0 ? 0 : date + p_sys->i_timeout * 1000;
     p_spu->b_ephemer = true;
@@ -326,6 +348,31 @@ out:
     return p_spu;
 }
 
+static char *MarqueeReadFile( filter_t *obj, const char *path )
+{
+    FILE *stream = vlc_fopen( path, "rt" );
+    if( stream == NULL )
+    {
+        msg_Err( obj, "cannot open %s: %m", path );
+        return NULL;
+    }
+
+    char *line = NULL;
+
+    ssize_t len = getline( &line, &(size_t){ 0 }, stream );
+    if( len == -1 )
+    {
+        msg_Err( obj, "cannot read %s: %m", path );
+        clearerr( stream );
+        line = NULL;
+    }
+    fclose( stream );
+
+    if( len >= 1 && line[len - 1] == '\n' )
+        line[--len]  = '\0';
+    return line;
+}
+
 /**********************************************************************
  * Callback to update params on the fly
  **********************************************************************/
@@ -341,8 +388,8 @@ static int MarqueeCallback( vlc_object_t *p_this, char const *psz_var,
     vlc_mutex_lock( &p_sys->lock );
     if( !strcmp( psz_var, "marq-marquee" ) )
     {
-        free( p_sys->psz_marquee );
-        p_sys->psz_marquee = strdup( newval.psz_string );
+        free( p_sys->format );
+        p_sys->format = strdup( newval.psz_string );
     }
     else if ( !strcmp( psz_var, "marq-x" ) )
     {
@@ -378,7 +425,10 @@ static int MarqueeCallback( vlc_object_t *p_this, char const *psz_var,
         p_sys->i_pos = newval.i_int;
         p_sys->i_xoff = -1;       /* force to relative positioning */
     }
-    p_sys->b_need_update = true;
+
+    free( p_sys->message );
+    p_sys->message = NULL; /* force update */
+
     vlc_mutex_unlock( &p_sys->lock );
     return VLC_SUCCESS;
 }

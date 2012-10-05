@@ -50,7 +50,9 @@
 
 #include "omxil.h"
 
-//#define OMXIL_EXTRA_DEBUG
+#ifndef NDEBUG
+# define OMXIL_EXTRA_DEBUG
+#endif
 
 #define SENTINEL_FLAG 0x10000
 
@@ -92,7 +94,7 @@ static int  OpenGeneric( vlc_object_t *, bool b_encode );
 static void CloseGeneric( vlc_object_t * );
 
 static picture_t *DecodeVideo( decoder_t *, block_t ** );
-static aout_buffer_t *DecodeAudio ( decoder_t *, block_t ** );
+static block_t *DecodeAudio ( decoder_t *, block_t ** );
 static block_t *EncodeVideo( encoder_t *, picture_t * );
 
 static OMX_ERRORTYPE OmxEventHandler( OMX_HANDLETYPE, OMX_PTR, OMX_EVENTTYPE,
@@ -272,6 +274,7 @@ static OMX_ERRORTYPE ImplementationSpecificWorkarounds(decoder_t *p_dec,
             def->format.video.xFramerate >>= 16;
         }
     }
+#if 0 /* FIXME: doesn't apply for HP Touchpad */
     else if (!strncmp(p_sys->psz_component, "OMX.qcom.video.decoder.",
                       strlen("OMX.qcom.video.decoder")))
     {
@@ -282,6 +285,7 @@ static OMX_ERRORTYPE ImplementationSpecificWorkarounds(decoder_t *p_dec,
             p_port->i_frame_size = def->nBufferSize;
         }
     }
+#endif
 
     return OMX_ErrorNone;
 }
@@ -314,8 +318,9 @@ static OMX_ERRORTYPE SetPortDefinition(decoder_t *p_dec, OmxPort *p_port,
 
         if(def->eDir == OMX_DirInput || p_dec->p_sys->b_enc)
         {
-            def->nBufferSize = def->format.video.nFrameWidth *
-              def->format.video.nFrameHeight * 2;
+            if (def->eDir == OMX_DirInput && p_dec->p_sys->b_enc)
+                def->nBufferSize = def->format.video.nFrameWidth *
+                  def->format.video.nFrameHeight * 2;
             p_port->i_frame_size = def->nBufferSize;
 
             if(!GetOmxVideoFormat(p_fmt->i_codec,
@@ -352,7 +357,8 @@ static OMX_ERRORTYPE SetPortDefinition(decoder_t *p_dec, OmxPort *p_port,
                                &p_port->i_frame_size, &p_port->i_frame_stride,
                                &p_port->i_frame_stride_chroma_div );
             def->format.video.nStride = p_port->i_frame_stride;
-            def->nBufferSize = p_port->i_frame_size;
+            if (p_port->i_frame_size > def->nBufferSize)
+                def->nBufferSize = p_port->i_frame_size;
         }
         break;
 
@@ -425,6 +431,27 @@ static OMX_ERRORTYPE SetPortDefinition(decoder_t *p_dec, OmxPort *p_port,
         def->nBufferSize *= 2;
     }
 
+    if (def->format.video.eCompressionFormat == OMX_VIDEO_CodingWMV) {
+        OMX_VIDEO_PARAM_WMVTYPE wmvtype = { 0 };
+        OMX_INIT_STRUCTURE(wmvtype);
+        wmvtype.nPortIndex = def->nPortIndex;
+        switch (p_dec->fmt_in.i_codec) {
+        case VLC_CODEC_WMV1:
+            wmvtype.eFormat = OMX_VIDEO_WMVFormat7;
+            break;
+        case VLC_CODEC_WMV2:
+            wmvtype.eFormat = OMX_VIDEO_WMVFormat8;
+            break;
+        case VLC_CODEC_WMV3:
+        case VLC_CODEC_VC1:
+            wmvtype.eFormat = OMX_VIDEO_WMVFormat9;
+            break;
+        }
+        omx_error = OMX_SetParameter(p_port->omx_handle, OMX_IndexParamVideoWmv, &wmvtype);
+        CHECK_ERROR(omx_error, "OMX_SetParameter OMX_IndexParamVideoWmv failed (%x : %s)",
+                    omx_error, ErrorToString(omx_error));
+    }
+
  error:
     return omx_error;
 }
@@ -460,6 +487,10 @@ static OMX_ERRORTYPE GetPortDefinition(decoder_t *p_dec, OmxPort *p_port,
         omx_error = OMX_GetConfig(p_port->omx_handle, OMX_IndexConfigCommonOutputCrop, &crop_rect);
         if (omx_error == OMX_ErrorNone)
         {
+            if (!def->format.video.nSliceHeight)
+                def->format.video.nSliceHeight = def->format.video.nFrameHeight;
+            if (!def->format.video.nStride)
+                def->format.video.nStride = def->format.video.nFrameWidth;
             p_fmt->video.i_width = crop_rect.nWidth;
             p_fmt->video.i_visible_width = crop_rect.nWidth;
             p_fmt->video.i_height = crop_rect.nHeight;
@@ -968,6 +999,14 @@ loaded:
         /* The same sw codecs, renamed in ICS (perhaps also in honeycomb) */
         if (!strncmp(p_sys->ppsz_components[i], "OMX.google.", 11))
             continue;
+        /* This one has been seen on HTC One V - it behaves like it works,
+         * but FillBufferDone returns buffers filled with 0 bytes. The One V
+         * has got a working OMX.qcom.video.decoder.avc instead though. */
+        if (!strncmp(p_sys->ppsz_components[i], "OMX.ARICENT.", 12))
+            continue;
+        /* Some nVidia codec with DRM */
+        if (!strncmp(p_sys->ppsz_components[i], "OMX.Nvidia.h264.decode.secure", 29))
+            continue;
 #endif
         omx_error = InitialiseComponent(p_dec, p_sys->ppsz_components[i],
                                         &p_sys->omx_handle);
@@ -1052,7 +1091,7 @@ loaded:
         }
 
         p_header->nOffset = 0;
-        p_header->nFlags = OMX_BUFFERFLAG_CODECCONFIG;
+        p_header->nFlags = OMX_BUFFERFLAG_CODECCONFIG | OMX_BUFFERFLAG_ENDOFFRAME;
         msg_Dbg(p_dec, "sending codec config data %p, %p, %i", p_header,
                 p_header->pBuffer, (int)p_header->nFilledLen);
         OMX_EmptyThisBuffer(p_sys->omx_handle, p_header);
@@ -1251,7 +1290,11 @@ static picture_t *DecodeVideo( decoder_t *p_dec, block_t **pp_block )
                 p_pic = decoder_NewPicture( p_dec );
 
                 if (p_pic)
-                    CopyOmxPicture(p_dec, p_pic, p_header, p_sys->out.definition.format.video.nSliceHeight);
+                    CopyOmxPicture(p_sys->out.definition.format.video.eColorFormat,
+                                   p_pic, p_sys->out.definition.format.video.nSliceHeight,
+                                   p_sys->out.i_frame_stride,
+                                   p_header->pBuffer + p_header->nOffset,
+                                   p_sys->out.i_frame_stride_chroma_div);
             }
 
             if (p_pic)
@@ -1295,7 +1338,7 @@ static picture_t *DecodeVideo( decoder_t *p_dec, block_t **pp_block )
         p_header->nFilledLen = p_block->i_buffer;
         p_header->nOffset = 0;
         p_header->nFlags = OMX_BUFFERFLAG_ENDOFFRAME;
-        if (p_sys->b_use_pts)
+        if (p_sys->b_use_pts && p_block->i_pts)
             p_header->nTimeStamp = p_block->i_pts;
         else
             p_header->nTimeStamp = p_block->i_dts;
@@ -1336,8 +1379,8 @@ static picture_t *DecodeVideo( decoder_t *p_dec, block_t **pp_block )
                 ptr[p_sys->i_nal_size_length - 1] = 1;
                 if( nal_len > INT_MAX || nal_len > (unsigned int) i_len )
                     break;
-                ptr   += nal_len + 4;
-                i_len -= nal_len + 4;
+                ptr   += nal_len + p_sys->i_nal_size_length;
+                i_len -= nal_len + p_sys->i_nal_size_length;
             }
         }
 #ifdef OMXIL_EXTRA_DEBUG
@@ -1372,10 +1415,10 @@ reconfig:
 /*****************************************************************************
  * DecodeAudio: Called to decode one frame
  *****************************************************************************/
-aout_buffer_t *DecodeAudio ( decoder_t *p_dec, block_t **pp_block )
+block_t *DecodeAudio ( decoder_t *p_dec, block_t **pp_block )
 {
     decoder_sys_t *p_sys = p_dec->p_sys;
-    aout_buffer_t *p_buffer = 0;
+    block_t *p_buffer = NULL;
     OMX_BUFFERHEADERTYPE *p_header;
     OMX_ERRORTYPE omx_error;
     block_t *p_block;

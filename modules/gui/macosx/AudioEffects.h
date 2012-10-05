@@ -1,7 +1,7 @@
 /*****************************************************************************
  * AudioEffects.h: MacOS X interface module
  *****************************************************************************
- * Copyright (C) 2004-2011 VLC authors and VideoLAN
+ * Copyright (C) 2004-2012 VLC authors and VideoLAN
  * $Id$
  *
  * Authors: Felix Paul Kühne <fkuehne -at- videolan -dot- org>
@@ -29,6 +29,8 @@
     IBOutlet id o_tableView;
     IBOutlet id o_window;
     intf_thread_t *p_intf;
+    IBOutlet id o_profile_pop;
+    BOOL b_genericAudioProfileInInteraction;
 
     /* Equalizer */
     IBOutlet id o_eq_enable_ckb;
@@ -96,12 +98,16 @@
     IBOutlet id o_filter_normLevel_ckb;
     IBOutlet id o_filter_normLevel_sld;
     IBOutlet id o_filter_normLevel_lbl;
+    IBOutlet id o_filter_karaoke_ckb;
 }
 
 /* generic */
 + (VLCAudioEffects *)sharedInstance;
 - (IBAction)toggleWindow:(id)sender;
 - (void)setAudioFilter: (char *)psz_name on:(BOOL)b_on;
+- (IBAction)profileSelectorAction:(id)sender;
+- (IBAction)addAudioEffectsProfile:(id)sender;
+- (IBAction)removeAudioEffectsProfile:(id)sender;
 
 /* Equalizer */
 - (void)setupEqualizer;
@@ -132,5 +138,6 @@
 - (IBAction)filter_enableHeadPhoneVirt:(id)sender;
 - (IBAction)filter_enableVolumeNorm:(id)sender;
 - (IBAction)filter_volNormSliderUpdated:(id)sender;
+- (IBAction)filter_enableKaraoke:(id)sender;
 
 @end

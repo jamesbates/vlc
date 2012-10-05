@@ -145,6 +145,7 @@ static int vlclua_input_metas_internal( lua_State *L, input_item_t *p_item )
         PUSH_META( EncodedBy, "encoded_by" );
         PUSH_META( ArtworkURL, "artwork_url" );
         PUSH_META( TrackID, "track_id" );
+        PUSH_META( TrackTotal, "track_total" );
 
 #undef PUSH_META
 
@@ -321,8 +322,8 @@ static int vlclua_input_item_set_meta( lua_State *L )
 #define META_TYPE( n, s ) { s, vlc_meta_ ## n },
     static const struct
     {
-        const char *psz_name;
-        vlc_meta_type_t type;
+        const char psz_name[15];
+        unsigned char type;
     } pp_meta_types[] = {
         META_TYPE( Title, "title" )
         META_TYPE( Artist, "artist" )
@@ -341,9 +342,13 @@ static int vlclua_input_item_set_meta( lua_State *L )
         META_TYPE( EncodedBy, "encoded_by" )
         META_TYPE( ArtworkURL, "artwork_url" )
         META_TYPE( TrackID, "track_id" )
+        META_TYPE( TrackTotal, "track_total" )
     };
 #undef META_TYPE
 
+    static_assert( sizeof(pp_meta_types)
+                      == VLC_META_TYPE_COUNT * sizeof(pp_meta_types[0]),
+                   "Inconsistent meta data types" );
     vlc_meta_type_t type = vlc_meta_Title;
     for( unsigned i = 0; i < VLC_META_TYPE_COUNT; i++ )
     {

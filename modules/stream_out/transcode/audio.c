@@ -45,7 +45,7 @@ static const int pi_channels_maps[6] =
      | AOUT_CHAN_REARLEFT | AOUT_CHAN_REARRIGHT
 };
 
-static aout_buffer_t *audio_new_buffer( decoder_t *p_dec, int i_samples )
+static block_t *audio_new_buffer( decoder_t *p_dec, int i_samples )
 {
     block_t *p_block;
     int i_size;
@@ -114,8 +114,25 @@ static int transcode_audio_filter_chain_build( sout_stream_t *p_stream, filter_c
 
         if( !filter_chain_AppendFilter( p_chain, NULL, NULL, NULL, &current ) )
         {
-            msg_Err( p_stream, "Failed to find conversion filter to fl32" );
-            return VLC_EGENERIC;
+            /* If that fails, try going through fi32 */
+            current.i_codec =
+                current.audio.i_format = VLC_CODEC_FI32;
+            aout_FormatPrepare( &current.audio );
+
+            if( !filter_chain_AppendFilter( p_chain, NULL, NULL, NULL, &current ) )
+            {
+                msg_Err( p_stream, "Failed to find conversion filter to fi32" );
+                return VLC_EGENERIC;
+            }
+            current = *filter_chain_GetFmtOut( p_chain );
+            current.i_codec =
+                current.audio.i_format = VLC_CODEC_FL32;
+            aout_FormatPrepare( &current.audio );
+            if( !filter_chain_AppendFilter( p_chain, NULL, NULL, NULL, &current ) )
+            {
+                msg_Err( p_stream, "Failed to find conversion filter to fl32" );
+                return VLC_EGENERIC;
+            }
         }
         current = *filter_chain_GetFmtOut( p_chain );
     }
@@ -328,17 +345,19 @@ int transcode_audio_process( sout_stream_t *p_stream,
     {
         if( p_sys->b_master_sync )
         {
-            mtime_t i_dts = date_Get( &id->interpolated_pts ) + 1;
-            if ( p_audio_buf->i_pts - i_dts > MASTER_SYNC_MAX_DRIFT
-                  || p_audio_buf->i_pts - i_dts < -MASTER_SYNC_MAX_DRIFT )
+            mtime_t i_pts = date_Get( &id->interpolated_pts ) + 1;
+            mtime_t i_drift = p_audio_buf->i_pts - i_pts;
+            if (i_drift > MASTER_SYNC_MAX_DRIFT || i_drift < -MASTER_SYNC_MAX_DRIFT)
             {
-                msg_Dbg( p_stream, "drift is too high, resetting master sync" );
+                msg_Dbg( p_stream,
+                    "drift is too high (%"PRId64"), resetting master sync",
+                    i_drift );
                 date_Set( &id->interpolated_pts, p_audio_buf->i_pts );
-                i_dts = p_audio_buf->i_pts + 1;
+                i_pts = p_audio_buf->i_pts + 1;
             }
-            p_sys->i_master_drift = p_audio_buf->i_pts - i_dts;
+            p_sys->i_master_drift = p_audio_buf->i_pts - i_pts;
             date_Increment( &id->interpolated_pts, p_audio_buf->i_nb_samples );
-            p_audio_buf->i_pts -= p_sys->i_master_drift;
+            p_audio_buf->i_pts = i_pts;
         }
 
         p_audio_buf->i_dts = p_audio_buf->i_pts;

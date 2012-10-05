@@ -1,8 +1,8 @@
 # live555
 
 #LIVEDOTCOM_URL := http://live555.com/liveMedia/public/live555-latest.tar.gz
-LIVE555_FILE := live.2011.12.23.tar.gz
-LIVEDOTCOM_URL := http://live555sourcecontrol.googlecode.com/files/$(LIVE555_FILE)
+LIVE555_FILE := live.2012.09.13.tar.gz
+LIVEDOTCOM_URL := http://download.videolan.org/pub/contrib/live555/$(LIVE555_FILE)
 
 PKGS += live555
 
@@ -29,6 +29,8 @@ LIVE_TARGET := freebsd
 endif
 endif
 
+LIVE_EXTRA_CFLAGS := $(EXTRA_CFLAGS) -fexceptions
+
 live555: $(LIVE555_FILE) .sum-live555
 	rm -Rf live
 	$(UNPACK)
@@ -38,13 +40,13 @@ ifdef HAVE_WINCE
 endif
 	cd live && sed -e 's%cc%$(CC)%' -e 's%c++%$(CXX)%' -e 's%LIBRARY_LINK =.*ar%LIBRARY_LINK = $(AR)%' -i.orig config.$(LIVE_TARGET)
 	cd live && sed -i.orig -e s/"libtool -s -o"/"ar cr"/g config.macosx*
-	cd live && sed \
-		-e 's%-DBSD=1%-DBSD=1\ $(EXTRA_CFLAGS)\ $(EXTRA_LDFLAGS)%' \
-		-e 's%$(CXX)%$(CXX)\ $(EXTRA_LDFLAGS)%' \
-		-i.orig config.macosx
+	cd live && sed -i.orig \
+		-e 's%$(CXX)%$(CXX)\ $(EXTRA_LDFLAGS)%' config.macosx
+	cd live && sed -i.orig \
+		-e 's%^\(COMPILE_OPTS.*\)$$%\1 '"$(LIVE_EXTRA_CFLAGS)%" config.*
 	cd live && sed -e 's%-D_FILE_OFFSET_BITS=64%-D_FILE_OFFSET_BITS=64\ -fPIC\ -DPIC%' -i.orig config.linux
 ifdef HAVE_ANDROID
-	cd live && sed -e 's%-DPIC%-DPIC -DNO_SSTREAM=1 -DLOCALE_NOT_USED -I$(ANDROID_NDK)/platforms/android-9/arch-arm/usr/include%' -i.orig config.linux
+	cd live && sed -e 's%-DPIC%-DPIC -DNO_SSTREAM=1 -DLOCALE_NOT_USED -I$(ANDROID_NDK)/platforms/android-9/arch-$(PLATFORM_SHORT_ARCH)/usr/include%' -i.orig config.linux
 	patch -p0 < $(SRC)/live555/android.patch
 endif
 	mv live $@
@@ -52,7 +54,10 @@ endif
 
 .live555: live555
 	cd $< && ./genMakefiles $(LIVE_TARGET)
-	cd $< && $(MAKE) $(HOSTVARS)
+	cd $< && $(MAKE) $(HOSTVARS) -C groupsock \
+			&& $(MAKE) $(HOSTVARS) -C liveMedia \
+			&& $(MAKE) $(HOSTVARS) -C UsageEnvironment \
+			&& $(MAKE) $(HOSTVARS) -C BasicUsageEnvironment
 	mkdir -p -- "$(PREFIX)/lib" "$(PREFIX)/include"
 	cp \
 		$</groupsock/libgroupsock.a \
@@ -64,7 +69,7 @@ endif
 		$</groupsock/include/*.hh \
 		$</groupsock/include/*.h \
 		$</liveMedia/include/*.hh \
-        	$</UsageEnvironment/include/*.hh \
-        	$</BasicUsageEnvironment/include/*.hh \
+		$</UsageEnvironment/include/*.hh \
+		$</BasicUsageEnvironment/include/*.hh \
 		"$(PREFIX)/include/"
 	touch $@

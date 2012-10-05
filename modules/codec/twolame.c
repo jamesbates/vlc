@@ -44,7 +44,7 @@
  ****************************************************************************/
 static int OpenEncoder   ( vlc_object_t * );
 static void CloseEncoder ( vlc_object_t * );
-static block_t *Encode   ( encoder_t *, aout_buffer_t * );
+static block_t *Encode   ( encoder_t *, block_t * );
 
 /*****************************************************************************
  * Module descriptor
@@ -258,7 +258,7 @@ static void Bufferize( encoder_t *p_enc, int16_t *p_in, int i_nb_samples )
                              * sizeof(int16_t) );
 }
 
-static block_t *Encode( encoder_t *p_enc, aout_buffer_t *p_aout_buf )
+static block_t *Encode( encoder_t *p_enc, block_t *p_aout_buf )
 {
     encoder_sys_t *p_sys = p_enc->p_sys;
     int16_t *p_buffer = (int16_t *)p_aout_buf->p_buffer;
@@ -283,7 +283,7 @@ static block_t *Encode( encoder_t *p_enc, aout_buffer_t *p_aout_buf )
                                p_sys->p_out_buffer, MAX_CODED_FRAME_SIZE );
         p_sys->i_nb_samples = 0;
         p_block = block_New( p_enc, i_used );
-        vlc_memcpy( p_block->p_buffer, p_sys->p_out_buffer, i_used );
+        memcpy( p_block->p_buffer, p_sys->p_out_buffer, i_used );
         p_block->i_length = (mtime_t)1000000 *
                 (mtime_t)MPEG_FRAME_SIZE / (mtime_t)p_enc->fmt_out.audio.i_rate;
         p_block->i_dts = p_block->i_pts = p_sys->i_pts;

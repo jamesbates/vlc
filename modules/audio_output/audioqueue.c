@@ -48,6 +48,8 @@ struct aout_sys_t
 {
     aout_packet_t packet;
     AudioQueueRef audioQueue;
+    float soft_gain;
+    bool soft_mute;
 };
 
 /*****************************************************************************
@@ -55,8 +57,10 @@ struct aout_sys_t
  *****************************************************************************/
 static int  Open               ( vlc_object_t * );
 static void Close              ( vlc_object_t * );
-static void Play               ( audio_output_t *, block_t * );
+static void Play               ( audio_output_t *, block_t *, mtime_t * );
 static void AudioQueueCallback (void *, AudioQueueRef, AudioQueueBufferRef);
+
+#include "volume.h"
 
 /*****************************************************************************
  * Module descriptor
@@ -117,7 +121,7 @@ static int Open ( vlc_object_t *p_this )
     }
 
     /* Volume is entirely done in software. */
-    aout_VolumeSoftInit( p_aout );
+    aout_SoftVolumeInit( p_aout );
 
     p_aout->format.i_format = VLC_CODEC_S16L;
     p_aout->format.i_physical_channels = AOUT_CHAN_LEFT | AOUT_CHAN_RIGHT;
@@ -136,9 +140,9 @@ static int Open ( vlc_object_t *p_this )
 /*****************************************************************************
   * aout_FifoPop : get the next buffer out of the FIFO
   *****************************************************************************/
-static aout_buffer_t *aout_FifoPop2( aout_fifo_t * p_fifo )
+static block_t *aout_FifoPop2( aout_fifo_t * p_fifo )
  {
-     aout_buffer_t *p_buffer = p_fifo->p_first;
+     block_t *p_buffer = p_fifo->p_first;
      if( p_buffer != NULL )
      {
          p_fifo->p_first = p_buffer->p_next;
@@ -167,7 +171,7 @@ static void Close ( vlc_object_t *p_this )
 
 void AudioQueueCallback(void * inUserData, AudioQueueRef inAQ, AudioQueueBufferRef inBuffer) {
     audio_output_t * p_aout = (audio_output_t *)inUserData;
-    aout_buffer_t *   p_buffer = NULL;
+    block_t *   p_buffer = NULL;
 
     if (p_aout) {
         struct aout_sys_t * p_sys = p_aout->sys;
@@ -182,11 +186,11 @@ void AudioQueueCallback(void * inUserData, AudioQueueRef inAQ, AudioQueueBufferR
     }
 
     if ( p_buffer != NULL ) {
-        vlc_memcpy( inBuffer->mAudioData, p_buffer->p_buffer, p_buffer->i_buffer );
+        memcpy( inBuffer->mAudioData, p_buffer->p_buffer, p_buffer->i_buffer );
         inBuffer->mAudioDataByteSize = p_buffer->i_buffer;
-        aout_BufferFree( p_buffer );
+        block_Release( p_buffer );
     } else {
-        vlc_memset( inBuffer->mAudioData, 0, inBuffer->mAudioDataBytesCapacity );
+        memset( inBuffer->mAudioData, 0, inBuffer->mAudioDataBytesCapacity );
         inBuffer->mAudioDataByteSize = inBuffer->mAudioDataBytesCapacity;
     }
     AudioQueueEnqueueBuffer(inAQ, inBuffer, 0, NULL);

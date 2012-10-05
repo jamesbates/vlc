@@ -91,13 +91,19 @@ enum vlc_module_properties
     VLC_CONFIG_DESC,
     /* description (args=const char *, const char *, const char *) */
 
-    VLC_CONFIG_LIST,
-    /* possible values list
-     * (args=const char *, size_t, const <type> *, const char *const *) */
+    VLC_CONFIG_LIST_OBSOLETE,
+    /* unused (ignored) */
 
-    VLC_CONFIG_ADD_ACTION,
-    /* add value change callback
-     * (args=const char *, vlc_callback_t, const char *) */
+    VLC_CONFIG_ADD_ACTION_OBSOLETE,
+    /* unused (ignored) */
+
+    VLC_CONFIG_LIST,
+    /* list of suggested values
+     * (args=size_t, const <type> *, const char *const *) */
+
+    VLC_CONFIG_LIST_CB,
+    /* callback for suggested values
+     * (args=size_t (*)(vlc_object_t *, <type> **, char ***)) */
 
     /* Insert new VLC_CONFIG_* here */
 };
@@ -470,19 +476,23 @@ VLC_METADATA_EXPORTS
 #define change_short( ch ) \
     vlc_config_set (VLC_CONFIG_SHORTCUT, (int)(ch));
 
-#define change_string_list( list, list_text, list_update_func ) \
+#define change_string_list( list, list_text ) \
     vlc_config_set (VLC_CONFIG_LIST, \
                     (size_t)(sizeof (list) / sizeof (char *)), \
                     (const char *const *)(list), \
-                    (const char *const *)(list_text), \
-                    (vlc_callback_t)(list_update_func));
+                    (const char *const *)(list_text));
+
+#define change_string_cb( cb ) \
+    vlc_config_set (VLC_CONFIG_LIST_CB, (cb));
 
 #define change_integer_list( list, list_text ) \
     vlc_config_set (VLC_CONFIG_LIST, \
                     (size_t)(sizeof (list) / sizeof (int)), \
                     (const int *)(list), \
-                    (const char *const *)(list_text), \
-                    (vlc_callback_t)(NULL));
+                    (const char *const *)(list_text));
+
+#define change_integer_cb( cb ) \
+    vlc_config_set (VLC_CONFIG_LIST_CB, (cb));
 
 #define change_integer_range( minv, maxv ) \
     vlc_config_set (VLC_CONFIG_RANGE, (int64_t)(minv), (int64_t)(maxv));
@@ -491,8 +501,7 @@ VLC_METADATA_EXPORTS
     vlc_config_set (VLC_CONFIG_RANGE, (double)(minv), (double)(maxv));
 
 #define change_action_add( pf_action, text ) \
-    vlc_config_set (VLC_CONFIG_ADD_ACTION, \
-                    (vlc_callback_t)(pf_action), (const char *)(text));
+    (void)(pf_action, text);
 
 /* For options that are saved but hidden from the preferences panel */
 #define change_private() \

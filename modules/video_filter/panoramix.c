@@ -799,7 +799,7 @@ static int Mouse( video_splitter_t *p_splitter, vlc_mouse_t *p_mouse,
     {
         for( int x = 0; x < p_sys->i_col; x++ )
         {
-            const panoramix_output_t *p_output = p_output = &p_sys->pp_output[x][y];
+            const panoramix_output_t *p_output = &p_sys->pp_output[x][y];
             if( p_output->b_active && p_output->i_output == i_index )
             {
                 const int i_x = p_new->i_x - p_output->filter.black.i_left;
@@ -983,7 +983,7 @@ static void FilterPlanar( uint8_t *p_out, int i_out_pitch,
     /* Top black border */
     for( int b = 0; b < p_cfg->black.i_top; b++ )
     {
-        vlc_memset( p_out, i_pixel_black, i_out_width );
+        memset( p_out, i_pixel_black, i_out_width );
         p_out += i_out_pitch;
     }
 
@@ -1004,7 +1004,7 @@ static void FilterPlanar( uint8_t *p_out, int i_out_pitch,
 
         /* Unmodified video */
         const int i_unmodified_width = i_copy_pitch - p_cfg->attenuate.i_left - p_cfg->attenuate.i_right;
-        vlc_memcpy( p_dst, p_src, i_unmodified_width );
+        memcpy( p_dst, p_src, i_unmodified_width );
         p_dst += i_unmodified_width;
         p_src += i_unmodified_width;
 
@@ -1036,7 +1036,7 @@ static void FilterPlanar( uint8_t *p_out, int i_out_pitch,
     /* Bottom black border */
     for( int b = 0; b < p_cfg->black.i_bottom; b++ )
     {
-        vlc_memset( p_out, i_pixel_black, i_out_width );
+        memset( p_out, i_pixel_black, i_out_width );
         p_out += i_out_pitch;
     }
 }

@@ -162,6 +162,23 @@ CLEAN_FILE += .automake
 CLEAN_PKG += automake
 DISTCLEAN_PKG += automake-$(AUTOMAKE_VERSION).tar.gz
 
+# m4
+
+m4-$(M4_VERSION).tar.gz:
+	$(call download,$(M4_URL))
+
+m4: m4-$(M4_VERSION).tar.gz
+	$(UNPACK)
+	$(MOVE)
+
+.m4: m4 .autoconf
+	(cd $<; ./configure --prefix=$(PREFIX) && make && make install)
+	touch $@
+
+CLEAN_FILE += .m4
+CLEAN_PKG += m4
+DISTCLEAN_PKG += m4-$(M4_VERSION).tar.gz
+
 # pkg-config
 
 pkg-config-$(PKGCFG_VERSION).tar.gz:
@@ -169,6 +186,7 @@ pkg-config-$(PKGCFG_VERSION).tar.gz:
 
 pkgconfig: pkg-config-$(PKGCFG_VERSION).tar.gz
 	$(UNPACK)
+	mv pkg-config-lite-$(PKGCFG_VERSION) pkg-config-$(PKGCFG_VERSION)
 	$(MOVE)
 
 .pkg-config: pkgconfig
@@ -198,10 +216,10 @@ CLEAN_PKG += openssl
 DISTCLEAN_PKG += openssl-$(OPENSSL_VERSION).tar.gz
 
 # gas-preprocessor
-yuvi-gas-preprocessor-$(GAS_VERSION).tar.gz:
+mansr-gas-preprocessor-$(GAS_VERSION).tar.gz:
 	$(call download,$(GAS_URL))
 
-gas: yuvi-gas-preprocessor-$(GAS_VERSION).tar.gz
+gas: mansr-gas-preprocessor-$(GAS_VERSION).tar.gz
 	$(UNPACK)
 	$(MOVE)
 
@@ -212,6 +230,22 @@ gas: yuvi-gas-preprocessor-$(GAS_VERSION).tar.gz
 CLEAN_FILE += .gas
 CLEAN_PKG += gas
 DISTCLEAN_PKG += yuvi-gas-preprocessor-$(GAS_VERSION).tar.gz
+
+# Ragel State Machine Compiler
+ragel-$(RAGEL_VERSION).tar.gz:
+	$(call download,$(RAGEL_URL))
+
+ragel: ragel-$(RAGEL_VERSION).tar.gz
+	$(UNPACK)
+	$(MOVE)
+
+.ragel: ragel
+	(cd ragel; ./configure --prefix=$(PREFIX) --disable-shared --enable-static && make && make install)
+	touch $@
+
+CLEAN_FILE += .ragel
+CLEAN_PKG += ragel
+DISTCLEAN_PKG += ragel-$(RAGEL_VERSION).tar.gz
 
 #
 #

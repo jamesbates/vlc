@@ -30,9 +30,11 @@
 
 #include <limits.h>
 #include <assert.h>
+#include <math.h>
 
 #include <vlc_common.h>
 #include <vlc_aout.h>
+#include <vlc_aout_intf.h>
 #include <vlc_modules.h>
 #include "aout_internal.h"
 #include "libvlc.h"
@@ -43,6 +45,15 @@
 
 /* Local functions */
 static void aout_Destructor( vlc_object_t * p_this );
+
+static int var_Copy (vlc_object_t *src, const char *name, vlc_value_t prev,
+                     vlc_value_t value, void *data)
+{
+    vlc_object_t *dst = data;
+
+    (void) src; (void) prev;
+    return var_Set (dst, name, value);
+}
 
 #undef aout_New
 /*****************************************************************************
@@ -61,21 +72,22 @@ audio_output_t *aout_New( vlc_object_t * p_parent )
     vlc_mutex_init (&owner->lock);
     owner->module = NULL;
     owner->input = NULL;
-    vlc_mutex_init (&owner->volume.lock);
-    owner->volume.multiplier = 1.0;
-    owner->volume.mixer = NULL;
 
-    aout->pf_play = aout_DecDeleteBuffer;
-    aout_VolumeNoneInit (aout);
+    aout->volume_set = NULL;
+    aout->mute_set = NULL;
     vlc_object_set_destructor (aout, aout_Destructor);
 
     /*
      * Persistent audio output variables
      */
     vlc_value_t val, text;
+    module_config_t *cfg;
     char *str;
 
-    var_Create (aout, "intf-change", VLC_VAR_VOID);
+    var_Create (aout, "volume", VLC_VAR_FLOAT);
+    var_AddCallback (aout, "volume", var_Copy, p_parent);
+    var_Create (aout, "mute", VLC_VAR_BOOL | VLC_VAR_DOINHERIT);
+    var_AddCallback (aout, "mute", var_Copy, p_parent);
 
     /* Visualizations */
     var_Create (aout, "visual", VLC_VAR_STRING | VLC_VAR_HASCHOICE);
@@ -131,18 +143,14 @@ audio_output_t *aout_New( vlc_object_t * p_parent )
     val.psz_string = (char*)"";
     text.psz_string = _("Disable");
     var_Change (aout, "equalizer", VLC_VAR_ADDCHOICE, &val, &text);
-    {
-        module_config_t *cfg = config_FindConfig (VLC_OBJECT(aout),
-                                                  "equalizer-preset");
-        if (cfg != NULL)
-            for (int i = 0; i < cfg->i_list; i++)
-            {
-                val.psz_string = (char *)cfg->ppsz_list[i];
-                text.psz_string = (char *)cfg->ppsz_list_text[i];
-                var_Change (aout, "equalizer", VLC_VAR_ADDCHOICE, &val, &text);
-            }
-    }
-
+    cfg = config_FindConfig (VLC_OBJECT(aout), "equalizer-preset");
+    if (likely(cfg != NULL))
+        for (unsigned i = 0; i < cfg->list_count; i++)
+        {
+            val.psz_string = cfg->list.psz[i];
+            text.psz_string = vlc_gettext(cfg->list_text[i]);
+            var_Change (aout, "equalizer", VLC_VAR_ADDCHOICE, &val, &text);
+        }
 
     var_Create (aout, "audio-filter", VLC_VAR_STRING | VLC_VAR_DOINHERIT);
     text.psz_string = _("Audio filters");
@@ -159,19 +167,15 @@ audio_output_t *aout_New( vlc_object_t * p_parent )
                 VLC_VAR_STRING | VLC_VAR_DOINHERIT );
     text.psz_string = _("Replay gain");
     var_Change (aout, "audio-replay-gain-mode", VLC_VAR_SETTEXT, &text, NULL);
-    {
-        module_config_t *cfg = config_FindConfig (VLC_OBJECT(aout),
-                                                  "audio-replay-gain-mode");
-        if( cfg != NULL )
-            for (int i = 0; i < cfg->i_list; i++)
-            {
-                val.psz_string = (char *)cfg->ppsz_list[i];
-                text.psz_string = (char *)cfg->ppsz_list_text[i];
-                var_Change (aout, "audio-replay-gain-mode", VLC_VAR_ADDCHOICE,
+    cfg = config_FindConfig (VLC_OBJECT(aout), "audio-replay-gain-mode");
+    if (likely(cfg != NULL))
+        for (unsigned i = 0; i < cfg->list_count; i++)
+        {
+            val.psz_string = cfg->list.psz[i];
+            text.psz_string = vlc_gettext(cfg->list_text[i]);
+            var_Change (aout, "audio-replay-gain-mode", VLC_VAR_ADDCHOICE,
                             &val, &text);
-            }
-    }
-
+        }
 
     return aout;
 }
@@ -182,6 +186,10 @@ void aout_Destroy (audio_output_t *aout)
 
     if (owner->module != NULL)
         aout_Shutdown (aout);
+
+    var_DelCallback (aout, "mute", var_Copy, aout->p_parent);
+    var_SetFloat (aout, "volume", -1.f);
+    var_DelCallback (aout, "volume", var_Copy, aout->p_parent);
     vlc_object_release (aout);
 }
 
@@ -193,45 +201,8 @@ static void aout_Destructor (vlc_object_t *obj)
     audio_output_t *aout = (audio_output_t *)obj;
     aout_owner_t *owner = aout_owner (aout);
 
-    vlc_mutex_destroy (&owner->volume.lock);
     vlc_mutex_destroy (&owner->lock);
 }
-
-#ifdef AOUT_DEBUG
-/* Lock debugging */
-static __thread unsigned aout_locks = 0;
-
-void aout_lock_check (unsigned i)
-{
-    unsigned allowed;
-    switch (i)
-    {
-        case VOLUME_LOCK:
-            allowed = 0;
-            break;
-        case OUTPUT_LOCK:
-            allowed = VOLUME_LOCK;
-            break;
-        default:
-            abort ();
-    }
-
-    if (aout_locks & ~allowed)
-    {
-        fprintf (stderr, "Illegal audio lock transition (%x -> %x)\n",
-                 aout_locks, aout_locks|i);
-        vlc_backtrace ();
-        abort ();
-    }
-    aout_locks |= i;
-}
-
-void aout_unlock_check (unsigned i)
-{
-    assert (aout_locks & i);
-    aout_locks &= ~i;
-}
-#endif
 
 /*
  * Formats management (internal and external)
@@ -401,6 +372,10 @@ const char * aout_FormatPrintChannels( const audio_sample_format_t * p_format )
           | AOUT_CHAN_REARLEFT | AOUT_CHAN_REARRIGHT | AOUT_CHAN_MIDDLELEFT
           | AOUT_CHAN_MIDDLERIGHT | AOUT_CHAN_LFE:
         return "3F2M2R/LFE";
+    case AOUT_CHAN_LEFT | AOUT_CHAN_RIGHT | AOUT_CHAN_CENTER
+          | AOUT_CHAN_REARCENTER | AOUT_CHAN_MIDDLELEFT
+          | AOUT_CHAN_MIDDLERIGHT | AOUT_CHAN_LFE:
+        return "3F2M1R/LFE";
     }
 
     return "ERROR";
@@ -650,13 +625,12 @@ bool aout_CheckChannelExtraction( int *pi_selection,
 static int FilterOrder( const char *psz_name )
 {
     static const struct {
-        const char *psz_name;
+        const char psz_name[10];
         int        i_order;
     } filter[] = {
         { "equalizer",  0 },
-        { NULL,         INT_MAX },
     };
-    for( int i = 0; filter[i].psz_name; i++ )
+    for( unsigned i = 0; i < ARRAY_SIZE(filter); i++ )
     {
         if( !strcmp( filter[i].psz_name, psz_name ) )
             return filter[i].i_order;
@@ -767,6 +741,3 @@ bool aout_ChangeFilterString( vlc_object_t *p_obj, vlc_object_t *p_aout,
 
     return true;
 }
-
-
-

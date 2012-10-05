@@ -136,10 +136,20 @@ void libvlc_set_exit_handler( libvlc_instance_t *p_i, void (*cb) (void *),
     libvlc_SetExitHandler( p_libvlc, cb, data );
 }
 
+static void libvlc_wait_wakeup( void *data )
+{
+    vlc_sem_post( data );
+}
+
 void libvlc_wait( libvlc_instance_t *p_i )
 {
-    libvlc_int_t *p_libvlc = p_i->p_libvlc_int;
-    libvlc_InternalWait( p_libvlc );
+    vlc_sem_t sem;
+
+    vlc_sem_init( &sem, 0 );
+    libvlc_set_exit_handler( p_i, libvlc_wait_wakeup, &sem );
+    vlc_sem_wait( &sem );
+    libvlc_set_exit_handler( p_i, NULL, NULL );
+    vlc_sem_destroy( &sem );
 }
 
 void libvlc_set_user_agent (libvlc_instance_t *p_i,
@@ -181,13 +191,13 @@ void libvlc_free( void *ptr )
 static libvlc_module_description_t *module_description_list_get(
                 libvlc_instance_t *p_instance, const char *capability )
 {
-    VLC_UNUSED( p_instance );
     libvlc_module_description_t *p_list = NULL,
                           *p_actual = NULL,
                           *p_previous = NULL;
-    module_t **module_list = module_list_get( NULL );
+    size_t count;
+    module_t **module_list = module_list_get( &count );
 
-    for (size_t i = 0; module_list[i]; i++)
+    for (size_t i = 0; i < count; i++)
     {
         module_t *p_module = module_list[i];
 
@@ -222,6 +232,7 @@ static libvlc_module_description_t *module_description_list_get(
     }
 
     module_list_free( module_list );
+    VLC_UNUSED( p_instance );
     return p_list;
 }
 

@@ -36,7 +36,7 @@
 #include <sys/types.h>
 #ifdef HAVE_UNISTD_H
 #   include <unistd.h>
-#elif defined( WIN32 ) && !defined( UNDER_CE )
+#elif defined( WIN32 )
 #   include <io.h>
 #endif
 
@@ -57,12 +57,12 @@ static block_t *Block( access_t * );
 static int Control( access_t *, int, va_list );
 
 vlc_module_begin ()
-    set_description( N_("Digital Video (Firewire/ieee1394)  input") )
+    set_description( N_("Digital Video (Firewire/ieee1394) input") )
     set_shortname( N_("DV") )
     set_category( CAT_INPUT )
     set_subcategory( SUBCAT_INPUT_ACCESS )
     set_capability( "access", 0 )
-    add_shortcut( "dv", "dv1394", "raw1394" )
+    add_shortcut( "dv", "raw1394" )
     set_callbacks( Open, Close )
 vlc_module_end ()
 

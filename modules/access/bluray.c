@@ -36,6 +36,7 @@
 #include <vlc_plugin.h>
 #include <vlc_demux.h>                      /* demux_t */
 #include <vlc_input.h>                      /* Seekpoints, chapters */
+#include <vlc_atomic.h>
 #include <vlc_dialog.h>                     /* BD+/AACS warnings */
 #include <vlc_vout.h>                       /* vout_PutSubpicture / subpicture_t */
 
@@ -82,8 +83,7 @@ typedef enum OverlayStatus {
 
 typedef struct bluray_overlay_t
 {
-    VLC_GC_MEMBERS
-
+    atomic_flag         released_once;
     vlc_mutex_t         lock;
     subpicture_t        *p_pic;
     OverlayStatus       status;
@@ -194,13 +194,17 @@ static int blurayOpen( vlc_object_t *object )
             struct mntent* m;
             struct mntent mbuf;
             char buf [8192];
+            /* bd_path may be a symlink (e.g. /dev/dvd -> /dev/sr0), so make
+             * sure we look up the real device */
+            char* bd_device = realpath(bd_path, NULL);
             while ((m = getmntent_r (mtab, &mbuf, buf, sizeof(buf))) != NULL) {
-                if (!strcmp (m->mnt_fsname, bd_path)) {
+                if (!strcmp (m->mnt_fsname, (bd_device == NULL ? bd_path : bd_device))) {
                     strncpy (bd_path, m->mnt_dir, sizeof(bd_path));
                     bd_path[sizeof(bd_path) - 1] = '\0';
                     break;
                 }
             }
+            free(bd_device);
             endmntent (mtab);
         }
     }
@@ -234,9 +238,35 @@ static int blurayOpen( vlc_object_t *object )
             goto error;
         }
         if (!disc_info->aacs_handled) {
+#ifdef BD_AACS_CORRUPTED_DISC
+            if (disc_info->aacs_error_code) {
+                switch (disc_info->aacs_error_code) {
+                    case BD_AACS_CORRUPTED_DISC:
+                        error_msg = _("BluRay Disc is corrupted.");
+                        break;
+                    case BD_AACS_NO_CONFIG:
+                        error_msg = _("Missing AACS configuration file!");
+                        break;
+                    case BD_AACS_NO_PK:
+                        error_msg = _("No valid processing key found in AACS config file.");
+                        break;
+                    case BD_AACS_NO_CERT:
+                        error_msg = _("No valid host certificate found in AACS config file.");
+                        break;
+                    case BD_AACS_CERT_REVOKED:
+                        error_msg = _("AACS Host certificate revoked.");
+                        break;
+                    case BD_AACS_MMC_FAILED:
+                        error_msg = _("AACS MMC failed.");
+                        break;
+                }
+                goto error;
+            }
+#else
             error_msg = _("Your system AACS decoding library does not work. "
                       "Missing keys?");
             goto error;
+#endif /* BD_AACS_CORRUPTED_DISC */
         }
     }
 
@@ -414,7 +444,7 @@ static es_out_id_t *esOutAdd( es_out_t *p_out, const es_format_t *p_fmt )
             if ( likely(p_pair != NULL) ) {
                 p_pair->i_id = p_fmt->i_id;
                 p_pair->p_es = p_es;
-                msg_Err( p_out->p_sys->p_demux, "Adding ES %d", p_fmt->i_id );
+                msg_Info( p_out->p_sys->p_demux, "Adding ES %d", p_fmt->i_id );
                 vlc_array_append(&p_sys->es, p_pair);
             }
         }
@@ -563,9 +593,11 @@ static void subpictureUpdaterUpdate(subpicture_t *p_subpic,
     vlc_mutex_unlock(&p_overlay->lock);
 }
 
+static void blurayCleanOverlayStruct(bluray_overlay_t *);
+
 static void subpictureUpdaterDestroy(subpicture_t *p_subpic)
 {
-    vlc_gc_decref(p_subpic->updater.p_sys->p_overlay);
+    blurayCleanOverlayStruct(p_subpic->updater.p_sys->p_overlay);
 }
 
 /*****************************************************************************
@@ -594,10 +626,10 @@ static int onMouseEvent(vlc_object_t *p_vout, const char *psz_var, vlc_value_t o
 /*****************************************************************************
  * libbluray overlay handling:
  *****************************************************************************/
-static void blurayCleanOverayStruct(gc_object_t *p_gc)
+static void blurayCleanOverlayStruct(bluray_overlay_t *p_overlay)
 {
-    bluray_overlay_t *p_overlay = vlc_priv(p_gc, bluray_overlay_t);
-
+    if (!atomic_flag_test_and_set(&p_overlay->released_once))
+        return;
     /*
      * This will be called when destroying the picture.
      * Don't delete it again from here!
@@ -617,7 +649,7 @@ static void blurayCloseAllOverlays(demux_t *p_demux)
             if (p_sys->p_overlays[i] != NULL) {
                 vout_FlushSubpictureChannel(p_sys->p_vout,
                                             p_sys->p_overlays[i]->p_pic->i_channel);
-                vlc_gc_decref(p_sys->p_overlays[i]);
+                blurayCleanOverlayStruct(p_sys->p_overlays[i]);
                 p_sys->p_overlays[i] = NULL;
             }
         }
@@ -677,9 +709,8 @@ static void blurayInitOverlay(demux_t *p_demux, const BD_OVERLAY* const ov)
         p_sys->p_overlays[ov->plane] = NULL;
         return;
     }
-    vlc_gc_init(p_sys->p_overlays[ov->plane], blurayCleanOverayStruct);
-    /* Incrementing refcounter: vout + demux */
-    vlc_gc_incref(p_sys->p_overlays[ov->plane]);
+    /* two references: vout + demux */
+    p_sys->p_overlays[ov->plane]->released_once = ATOMIC_FLAG_INIT;
 
     p_upd_sys->p_overlay = p_sys->p_overlays[ov->plane];
     subpicture_updater_t updater = {
@@ -688,6 +719,7 @@ static void blurayInitOverlay(demux_t *p_demux, const BD_OVERLAY* const ov)
         .pf_destroy  = subpictureUpdaterDestroy,
         .p_sys       = p_upd_sys,
     };
+    vlc_mutex_init(&p_sys->p_overlays[ov->plane]->lock);
     p_sys->p_overlays[ov->plane]->p_pic = subpicture_New(&updater);
     p_sys->p_overlays[ov->plane]->p_pic->i_original_picture_width = ov->w;
     p_sys->p_overlays[ov->plane]->p_pic->i_original_picture_height = ov->h;

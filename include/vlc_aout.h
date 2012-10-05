@@ -115,6 +115,7 @@ typedef int32_t vlc_fixed_t;
 #define AOUT_VAR_7_1                8
 #define AOUT_VAR_SPDIF              10
 
+#define AOUT_VAR_CHAN_UNSET         0 /* must be zero */
 #define AOUT_VAR_CHAN_STEREO        1
 #define AOUT_VAR_CHAN_RSTEREO       2
 #define AOUT_VAR_CHAN_LEFT          3
@@ -125,8 +126,6 @@ typedef int32_t vlc_fixed_t;
  * Main audio output structures
  *****************************************************************************/
 
-#define aout_BufferFree( buffer ) block_Release( buffer )
-
 /* Size of a frame for S/PDIF output. */
 #define AOUT_SPDIF_SIZE 6144
 
@@ -135,8 +134,6 @@ typedef int32_t vlc_fixed_t;
 
 /* FIXME to remove once aout.h is cleaned a bit more */
 #include <vlc_block.h>
-
-typedef int (*aout_volume_cb) (audio_output_t *, float, bool);
 
 /** Audio output object */
 struct audio_output
@@ -147,12 +144,21 @@ struct audio_output
         only when succesfully probed and not afterward) */
 
     struct aout_sys_t *sys; /**< Output plugin private data */
-    void (*pf_play)(audio_output_t *, block_t *); /**< Audio buffer callback */
+    void (*pf_play)(audio_output_t *, block_t *, mtime_t *); /**< Play callback
+        - queue a block for playback */
     void (* pf_pause)( audio_output_t *, bool, mtime_t ); /**< Pause/resume
         callback (optional, may be NULL) */
     void (* pf_flush)( audio_output_t *, bool ); /**< Flush/drain callback
         (optional, may be NULL) */
-    aout_volume_cb          pf_volume_set; /**< Volume setter (or NULL) */
+    int (*volume_set)(audio_output_t *, float); /**< Volume setter (or NULL) */
+    int (*mute_set)(audio_output_t *, bool); /**< Mute setter (or NULL) */
+
+    struct {
+        void (*volume_report)(audio_output_t *, float);
+        void (*mute_report)(audio_output_t *, bool);
+        void (*policy_report)(audio_output_t *, bool);
+        int (*gain_request)(audio_output_t *, float);
+    } event;
 };
 
 /**
@@ -219,12 +225,40 @@ VLC_API void aout_FormatPrint(vlc_object_t *, const char *,
 #define aout_FormatPrint(o, t, f) aout_FormatPrint(VLC_OBJECT(o), t, f)
 VLC_API const char * aout_FormatPrintChannels( const audio_sample_format_t * ) VLC_USED;
 
-VLC_API void aout_VolumeNoneInit( audio_output_t * );
-VLC_API void aout_VolumeSoftInit( audio_output_t * );
-VLC_API void aout_VolumeHardInit( audio_output_t *, aout_volume_cb );
-VLC_API void aout_VolumeHardSet( audio_output_t *, float, bool );
+/**
+ * Report change of configured audio volume to the core and UI.
+ */
+static inline void aout_VolumeReport(audio_output_t *aout, float volume)
+{
+    aout->event.volume_report(aout, volume);
+}
 
-VLC_API void aout_TimeReport(audio_output_t *, mtime_t);
+/**
+ * Report change of muted flag to the core and UI.
+ */
+static inline void aout_MuteReport(audio_output_t *aout, bool mute)
+{
+    aout->event.mute_report(aout, mute);
+}
+
+/**
+ * Report audio policy status.
+ * \parm cork true to request a cork, false to undo any pending cork.
+ */
+static inline void aout_PolicyReport(audio_output_t *aout, bool cork)
+{
+    aout->event.policy_report(aout, cork);
+}
+
+/**
+ * Request a change of software audio amplification.
+ * \param gain linear amplitude gain (must be positive)
+ * \warning Values in excess 1.0 may cause overflow and distorsion.
+ */
+static inline int aout_GainRequest(audio_output_t *aout, float gain)
+{
+    return aout->event.gain_request(aout, gain);
+}
 
 VLC_API int aout_ChannelsRestart( vlc_object_t *, const char *, vlc_value_t, vlc_value_t, void * );
 
@@ -234,9 +268,9 @@ VLC_API vout_thread_t * aout_filter_RequestVout( filter_t *, vout_thread_t *p_vo
 /** Audio output buffer FIFO */
 struct aout_fifo_t
 {
-    aout_buffer_t *         p_first;
-    aout_buffer_t **        pp_last;
-    date_t                  end_date;
+    block_t  *p_first;
+    block_t **pp_last;
+    date_t    end_date;
 };
 
 /* Legacy packet-oriented audio output helpers */
@@ -254,7 +288,7 @@ typedef struct
 VLC_DEPRECATED void aout_PacketInit(audio_output_t *, aout_packet_t *, unsigned);
 VLC_DEPRECATED void aout_PacketDestroy(audio_output_t *);
 
-VLC_DEPRECATED void aout_PacketPlay(audio_output_t *, block_t *);
+VLC_DEPRECATED void aout_PacketPlay(audio_output_t *, block_t *, mtime_t *);
 VLC_DEPRECATED void aout_PacketPause(audio_output_t *, bool, mtime_t);
 VLC_DEPRECATED void aout_PacketFlush(audio_output_t *, bool);
 

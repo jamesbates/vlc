@@ -71,9 +71,7 @@ typedef struct {
 } WAVEFORMATEXTENSIBLE, *PWAVEFORMATEXTENSIBLE;
 #endif
 
-#ifndef UNDER_CE
-#   include <dsound.h>
-#endif
+#include <dsound.h>
 
 #ifndef SPEAKER_FRONT_LEFT
 #   define SPEAKER_FRONT_LEFT             0x1
@@ -98,41 +96,42 @@ typedef struct {
 #endif
 
 #ifndef DSSPEAKER_DSSPEAKER_DIRECTOUT
-#   define DSSPEAKER_DSSPEAKER_DIRECTOUT         0x00000000
+#   define DSSPEAKER_DSSPEAKER_DIRECTOUT  0x00000000
 #endif
 #ifndef DSSPEAKER_HEADPHONE
-#   define DSSPEAKER_HEADPHONE         0x00000001
+#   define DSSPEAKER_HEADPHONE            0x00000001
 #endif
 #ifndef DSSPEAKER_MONO
-#   define DSSPEAKER_MONO              0x00000002
+#   define DSSPEAKER_MONO                 0x00000002
 #endif
 #ifndef DSSPEAKER_QUAD
-#   define DSSPEAKER_QUAD              0x00000003
+#   define DSSPEAKER_QUAD                 0x00000003
 #endif
 #ifndef DSSPEAKER_STEREO
-#   define DSSPEAKER_STEREO            0x00000004
+#   define DSSPEAKER_STEREO               0x00000004
 #endif
 #ifndef DSSPEAKER_SURROUND
-#   define DSSPEAKER_SURROUND          0x00000005
+#   define DSSPEAKER_SURROUND             0x00000005
 #endif
 #ifndef DSSPEAKER_5POINT1
-#   define DSSPEAKER_5POINT1           0x00000006
+#   define DSSPEAKER_5POINT1              0x00000006
+#endif
+#ifndef DSSPEAKER_5POINT1_BACK
+#   define DSSPEAKER_5POINT1_BACK         DSSPEAKER_5POINT1
 #endif
 #ifndef DSSPEAKER_7POINT1
-#   define DSSPEAKER_7POINT1           0x00000007
+#   define DSSPEAKER_7POINT1              0x00000007
 #endif
 #ifndef DSSPEAKER_7POINT1_SURROUND
-#   define DSSPEAKER_7POINT1_SURROUND           0x00000008
+#   define DSSPEAKER_7POINT1_SURROUND     0x00000008
+#endif
+#ifndef DSSPEAKER_5POINT1_SURROUND
+#   define DSSPEAKER_5POINT1_SURROUND     0x00000009
 #endif
 #ifndef DSSPEAKER_7POINT1_WIDE
-#   define DSSPEAKER_7POINT1_WIDE           DSSPEAKER_7POINT1
+#   define DSSPEAKER_7POINT1_WIDE         DSSPEAKER_7POINT1
 #endif
 
-static const uint32_t pi_channels_src[] =
-    { AOUT_CHAN_LEFT, AOUT_CHAN_RIGHT,
-      AOUT_CHAN_MIDDLELEFT, AOUT_CHAN_MIDDLERIGHT,
-      AOUT_CHAN_REARLEFT, AOUT_CHAN_REARRIGHT, AOUT_CHAN_REARCENTER,
-      AOUT_CHAN_CENTER, AOUT_CHAN_LFE, 0 };
 static const uint32_t pi_channels_in[] =
     { SPEAKER_FRONT_LEFT, SPEAKER_FRONT_RIGHT,
       SPEAKER_SIDE_LEFT, SPEAKER_SIDE_RIGHT,

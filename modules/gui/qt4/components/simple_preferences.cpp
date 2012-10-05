@@ -102,6 +102,7 @@ SPrefsCatList::SPrefsCatList( intf_thread_t *_p_intf, QWidget *_parent, bool sma
     layout->setMargin( 0 );
     layout->setSpacing( 1 );
 
+    setMinimumWidth( 140 );
     setSizePolicy(QSizePolicy::Expanding,QSizePolicy::Expanding);
     setLayout( layout );
 
@@ -327,7 +328,7 @@ SPrefsPanel::SPrefsPanel( intf_thread_t *_p_intf, QWidget *_parent,
 #undef audioCommon
 
             /* Audio Options */
-            ui.volumeValue->setMaximum( (AOUT_VOLUME_DEFAULT * 2) / AOUT_VOLUME_DEFAULT * 100 );
+            ui.volumeValue->setMaximum( 200 );
             CONFIG_GENERIC_NO_BOOL( "volume" , IntegerRangeSlider, NULL,
                                      defaultVolume );
             CONNECT( ui.defaultVolume, valueChanged( int ),
@@ -548,12 +549,12 @@ SPrefsPanel::SPrefsPanel( intf_thread_t *_p_intf, QWidget *_parent,
                     ui.skins->setChecked( true );
             } else {
                 /* defaults to qt */
-                ui.qt4->setChecked( true );
+                ui.qt->setChecked( true );
             }
             free( psz_intf );
 
             optionWidgets.append( ui.skins );
-            optionWidgets.append( ui.qt4 );
+            optionWidgets.append( ui.qt );
 #if !defined( WIN32)
             ui.stylesCombo->addItem( qtr("System's default") );
             ui.stylesCombo->addItems( QStyleFactory::keys() );
@@ -571,7 +572,7 @@ SPrefsPanel::SPrefsPanel( intf_thread_t *_p_intf, QWidget *_parent,
             optionWidgets.append( NULL );
 #endif
             radioGroup = new QButtonGroup(this);
-            radioGroup->addButton( ui.qt4, 0 );
+            radioGroup->addButton( ui.qt, 0 );
             radioGroup->addButton( ui.skins, 1 );
             CONNECT( radioGroup, buttonClicked( int ),
                      ui.styleStackedWidget, setCurrentIndex( int ) );
@@ -613,19 +614,24 @@ SPrefsPanel::SPrefsPanel( intf_thread_t *_p_intf, QWidget *_parent,
             CONNECT( ui.updatesBox, toggled( bool ),
                      ui.updatesDays, setEnabled( bool ) );
 #else
-            ui.updateNotifierZone->hide();
+            ui.updatesBox->hide();
+            ui.updatesDays->hide();
 #endif
             /* ONE INSTANCE options */
-#if defined( WIN32 ) || defined( HAVE_DBUS ) || defined(__APPLE__)
-            CONFIG_BOOL( "one-instance", OneInterfaceMode );
-            CONFIG_BOOL( "playlist-enqueue",
-                    EnqueueOneInterfaceMode );
-            ui.EnqueueOneInterfaceMode->setEnabled( ui.OneInterfaceMode->isChecked() );
-            CONNECT( ui.OneInterfaceMode, toggled( bool ),
-                     ui.EnqueueOneInterfaceMode, setEnabled( bool ) );
-#else
-            ui.OneInterfaceBox->hide();
+#if !defined( WIN32 ) && !defined(__APPLE__)
+            if( !module_exists( "dbus" ) )
+                ui.OneInterfaceBox->hide();
+            else
 #endif
+            {
+                CONFIG_BOOL( "one-instance", OneInterfaceMode );
+                CONFIG_BOOL( "playlist-enqueue", EnqueueOneInterfaceMode );
+                ui.EnqueueOneInterfaceMode->setEnabled(
+                                                       ui.OneInterfaceMode->isChecked() );
+                CONNECT( ui.OneInterfaceMode, toggled( bool ),
+                         ui.EnqueueOneInterfaceMode, setEnabled( bool ) );
+            }
+
             /* RECENTLY PLAYED options */
             CONNECT( ui.saveRecentlyPlayed, toggled( bool ),
                      ui.recentlyPlayedFilters, setEnabled( bool ) );
@@ -742,7 +748,7 @@ void SPrefsPanel::updateAudioOptions( int number)
     QString value = qobject_cast<QComboBox *>(optionWidgets[audioOutCoB])
                                             ->itemData( number ).toString();
 #ifdef WIN32
-    optionWidgets[directxW]->setVisible( ( value == "aout_directx" ) );
+    optionWidgets[directxW]->setVisible( ( value == "directsound" ) );
 #elif defined( __OS2__ )
     optionWidgets[kaiW]->setVisible( ( value == "kai" ) );
 #else
@@ -755,7 +761,7 @@ void SPrefsPanel::updateAudioOptions( int number)
 #endif
     optionWidgets[fileW]->setVisible( ( value == "aout_file" ) );
     optionWidgets[spdifChB]->setVisible( ( value == "alsa" || value == "oss" || value == "auhal" ||
-                                           value == "aout_directx" || value == "waveout" ) );
+                                           value == "directsound" || value == "waveout" ) );
 }
 
 
@@ -929,7 +935,7 @@ bool SPrefsPanel::addType( const char * psz_ext, QTreeWidgetItem* current,
 void SPrefsPanel::assoDialog()
 {
     IApplicationAssociationRegistrationUI *p_appassoc;
-    CoInitialize( 0 );
+    CoInitializeEx( NULL, COINIT_APARTMENTTHREADED );
 
     if( S_OK == CoCreateInstance(CLSID_ApplicationAssociationRegistrationUI,
                 NULL, CLSCTX_INPROC_SERVER,
@@ -976,8 +982,8 @@ void SPrefsPanel::assoDialog()
 
     aTa( ".a52" ); aTa( ".aac" ); aTa( ".ac3" ); aTa( ".dts" ); aTa( ".flac" );
     aTa( ".m4a" ); aTa( ".m4p" ); aTa( ".mka" ); aTa( ".mod" ); aTa( ".mp1" );
-    aTa( ".mp2" ); aTa( ".mp3" ); aTa( ".oma" ); aTa( ".oga" ); aTa( ".spx" );
-    aTa( ".tta" ); aTa( ".wav" ); aTa( ".wma" ); aTa( ".xm" );
+    aTa( ".mp2" ); aTa( ".mp3" ); aTa( ".oma" ); aTa( ".oga" ); aTa( ".opus" );
+    aTa( ".spx" ); aTa( ".tta" ); aTa( ".wav" ); aTa( ".wma" ); aTa( ".xm" );
     audioType->setCheckState( 0, ( i_temp > 0 ) ?
                               ( ( i_temp == audioType->childCount() ) ?
                                Qt::Checked : Qt::PartiallyChecked )
@@ -1020,7 +1026,6 @@ void SPrefsPanel::assoDialog()
     CONNECT( clearButton, clicked(), d, reject() );
     d->resize( 300, 400 );
     d->exec();
-    delete d;
     delete qvReg;
     listAsso.clear();
 }
@@ -1035,7 +1040,7 @@ void addAsso( QVLCRegistry *qvReg, const char *psz_ext )
 
     if( !EMPTY_STR(psz_value) )
         qvReg->WriteRegistryString( psz_ext, "VLC.backup", psz_value );
-    delete psz_value;
+    free( psz_value );
 
     /* Put a "link" to VLC.EXT as default */
     qvReg->WriteRegistryString( psz_ext, "", qtu( s_path ) );
@@ -1065,10 +1070,10 @@ void addAsso( QVLCRegistry *qvReg, const char *psz_ext )
 
 void delAsso( QVLCRegistry *qvReg, const char *psz_ext )
 {
-    char psz_VLC[] = "VLC";
+    QString s_path( "VLC"); s_path += psz_ext;
     char *psz_value = qvReg->ReadRegistryString( psz_ext, "", "" );
 
-    if( psz_value && !strcmp( strcat( psz_VLC, psz_ext ), psz_value ) )
+    if( psz_value && !strcmp( qtu(s_path), psz_value ) )
     {
         free( psz_value );
         psz_value = qvReg->ReadRegistryString( psz_ext, "VLC.backup", "" );
@@ -1077,8 +1082,9 @@ void delAsso( QVLCRegistry *qvReg, const char *psz_ext )
 
         qvReg->DeleteKey( psz_ext, "VLC.backup" );
     }
-    delete( psz_value );
+    free( psz_value );
 }
+
 void SPrefsPanel::saveAsso()
 {
     QVLCRegistry * qvReg = NULL;

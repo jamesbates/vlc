@@ -48,6 +48,9 @@
     IBOutlet id o_fullscreen_btn;
     IBOutlet id o_title_lbl;
 }
+@property (readonly) NSButton * closeButton;
+@property (readonly) NSButton * minimizeButton;
+@property (readonly) NSButton * zoomButton;
 
 - (void)loadButtonIcons;
 - (IBAction)buttonAction:(id)sender;
@@ -59,23 +62,18 @@
 @end
 
 @interface VLCWindowButtonCell : NSButtonCell
-{
-}
+
 @end
 
 @interface VLCResizeControl : NSImageView
-{
-}
+
 @end
 
 @interface VLCColorView : NSView
-{
-}
+
 @end
 
 @interface VLCCustomWindowButtonPrototype: NSButton
-{
-}
 - (NSArray*)extendedAccessibilityAttributeNames: (NSArray*)theAttributeNames;
 - (id)extendedAccessibilityAttributeValue: (NSString*)theAttributeName;
 - (NSNumber*)extendedAccessibilityIsAttributeSettable: (NSString*)theAttributeName;
@@ -83,23 +81,26 @@
 @end
 
 @interface VLCCustomWindowCloseButton: VLCCustomWindowButtonPrototype
-{
-}
+
 @end
 
 
 @interface VLCCustomWindowMinimizeButton: VLCCustomWindowButtonPrototype
-{
-}
+
 @end
 
 
 @interface VLCCustomWindowZoomButton: VLCCustomWindowButtonPrototype
-{
-}
+
 @end
 
 @interface VLCCustomWindowFullscreenButton : VLCCustomWindowButtonPrototype
+
+@end
+
+@interface VLCWindowTitleTextField : NSTextField
 {
+    NSMenu * contextMenu;
 }
+
 @end

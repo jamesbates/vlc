@@ -57,13 +57,6 @@ enum {
     EXT_FILTER_SUBTITLE  =  0x10,
 };
 
-enum {
-    DialogEvent_Type = QEvent::User + DialogEventType + 1,
-    //PLUndockEvent_Type = QEvent::User + DialogEventType + 2;
-    //PLDockEvent_Type = QEvent::User + DialogEventType + 3;
-    SetVideoOnTopEvent_Type = QEvent::User + DialogEventType + 4,
-};
-
 class QEvent;
 class QSignalMapper;
 class VLCMenuBar;
@@ -186,14 +179,14 @@ signals:
 class DialogEvent : public QEvent
 {
 public:
+    static const QEvent::Type DialogEvent_Type;
     DialogEvent( int _i_dialog, int _i_arg, intf_dialog_args_t *_p_arg ) :
-                 QEvent( (QEvent::Type)(DialogEvent_Type) )
+                 QEvent( DialogEvent_Type )
     {
         i_dialog = _i_dialog;
         i_arg = _i_arg;
         p_arg = _p_arg;
     }
-    virtual ~DialogEvent() { }
 
     int i_arg, i_dialog;
     intf_dialog_args_t *p_arg;

@@ -37,6 +37,10 @@
 
 #include <libswscale/swscale.h>
 
+#ifdef __APPLE__
+# include <TargetConditionals.h>
+#endif
+
 #include "../codec/avcodec/chroma.h" // Chroma Avutil <-> VLC conversion
 
 /* Gruikkkkkkkkkk!!!!! */
@@ -75,8 +79,6 @@ vlc_module_end ()
 /****************************************************************************
  * Local prototypes
  ****************************************************************************/
-
-void *( *swscale_fast_memcpy )( void *, const void *, size_t );
 
 /**
  * Internal swscale filter structure.
@@ -156,9 +158,6 @@ static int OpenScaler( vlc_object_t *p_this )
     if( ( p_filter->p_sys = p_sys = malloc(sizeof(filter_sys_t)) ) == NULL )
         return VLC_ENOMEM;
 
-    /* FIXME pointer assignment may not be atomic */
-    swscale_fast_memcpy = vlc_memcpy;
-
     /* Set CPU capabilities */
     p_sys->i_cpu_mask = GetSwsCpuMask();
 
@@ -208,6 +207,9 @@ static int OpenScaler( vlc_object_t *p_this )
              (char *)&p_filter->fmt_out.video.i_chroma,
              ppsz_mode_descriptions[i_sws_mode] );
 
+    p_filter->fmt_out.video.i_sar_num = p_filter->fmt_in.video.i_sar_num;
+    p_filter->fmt_out.video.i_sar_den = p_filter->fmt_in.video.i_sar_den;
+
     return VLC_SUCCESS;
 }
 
@@ -230,20 +232,21 @@ static void CloseScaler( vlc_object_t *p_this )
  *****************************************************************************/
 static int GetSwsCpuMask(void)
 {
-    const unsigned int i_cpu = vlc_CPU();
     int i_sws_cpu = 0;
 
-    if( i_cpu & CPU_CAPABILITY_MMX )
+#if defined(__i386__) || defined(__x86_64__)
+    if( vlc_CPU_MMX() )
         i_sws_cpu |= SWS_CPU_CAPS_MMX;
 #if (LIBSWSCALE_VERSION_INT >= ((0<<16)+(5<<8)+0))
-    if( i_cpu & CPU_CAPABILITY_MMXEXT )
+    if( vlc_CPU_MMXEXT() )
         i_sws_cpu |= SWS_CPU_CAPS_MMX2;
 #endif
-    if( i_cpu & CPU_CAPABILITY_3DNOW )
+    if( vlc_CPU_3dNOW() )
         i_sws_cpu |= SWS_CPU_CAPS_3DNOW;
-
-    if( i_cpu & CPU_CAPABILITY_ALTIVEC )
+#elif defined(__ppc__) || defined(__ppc64__) || defined(__powerpc__)
+    if( vlc_CPU_ALTIVEC() )
         i_sws_cpu |= SWS_CPU_CAPS_ALTIVEC;
+#endif
 
     return i_sws_cpu;
 }
@@ -308,7 +311,7 @@ static int GetParameters( ScalerConfiguration *p_cfg,
     FixParameters( &i_fmti, &b_has_ai, &b_swap_uvi, p_fmti->i_chroma );
     FixParameters( &i_fmto, &b_has_ao, &b_swap_uvo, p_fmto->i_chroma );
 
-#ifndef __ANDROID__
+#if !defined (__ANDROID__) && !defined(TARGET_OS_IPHONE)
     /* FIXME TODO removed when ffmpeg is fixed
      * Without SWS_ACCURATE_RND the quality is really bad for some conversions */
     switch( i_fmto )

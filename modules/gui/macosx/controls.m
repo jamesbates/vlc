@@ -1,7 +1,7 @@
 /*****************************************************************************
  * controls.m: MacOS X interface module
  *****************************************************************************
- * Copyright (C) 2002-2011 VLC authors and VideoLAN
+ * Copyright (C) 2002-2012 VLC authors and VideoLAN
  * $Id$
  *
  * Authors: Jon Lech Johansen <jon-vl@nanocrew.net>
@@ -93,10 +93,10 @@
 {
     vlc_value_t val;
     intf_thread_t * p_intf = VLCIntf;
-    playlist_t * p_playlist = pl_Get( p_intf );
+    playlist_t * p_playlist = pl_Get(p_intf);
 
-    var_Get( p_playlist, "repeat", &val );
-    if(! val.b_bool )
+    var_Get(p_playlist, "repeat", &val);
+    if (! val.b_bool)
         [[VLCCoreInteraction sharedInstance] repeatOne];
     else
         [[VLCCoreInteraction sharedInstance] repeatOff];
@@ -106,10 +106,10 @@
 {
     vlc_value_t val;
     intf_thread_t * p_intf = VLCIntf;
-    playlist_t * p_playlist = pl_Get( p_intf );
+    playlist_t * p_playlist = pl_Get(p_intf);
 
-    var_Get( p_playlist, "loop", &val );
-    if(! val.b_bool )
+    var_Get(p_playlist, "loop", &val);
+    if (! val.b_bool)
         [[VLCCoreInteraction sharedInstance] repeatAll];
     else
         [[VLCCoreInteraction sharedInstance] repeatOff];
@@ -118,8 +118,8 @@
 - (IBAction)quitAfterPlayback:(id)sender
 {
     vlc_value_t val;
-    playlist_t * p_playlist = pl_Get( VLCIntf );
-    var_ToggleBool( p_playlist, "play-and-exit" );
+    playlist_t * p_playlist = pl_Get(VLCIntf);
+    var_ToggleBool(p_playlist, "play-and-exit");
 }
 
 - (IBAction)forward:(id)sender
@@ -144,7 +144,7 @@
 
 - (IBAction)mute:(id)sender
 {
-    [[VLCCoreInteraction sharedInstance] mute];
+    [[VLCCoreInteraction sharedInstance] setMute: YES];
 }
 
 - (IBAction)volumeSliderUpdated:(id)sender
@@ -154,28 +154,25 @@
 
 - (IBAction)showPosition: (id)sender
 {
-    input_thread_t * p_input = pl_CurrentInput( VLCIntf );
-    if( p_input != NULL )
-    {
-        vout_thread_t *p_vout = input_GetVout( p_input );
-        if( p_vout != NULL )
-        {
-            var_SetInteger( VLCIntf->p_libvlc, "key-action", ACTIONID_POSITION );
-            vlc_object_release( (vlc_object_t *)p_vout );
+    input_thread_t * p_input = pl_CurrentInput(VLCIntf);
+    if (p_input != NULL) {
+        vout_thread_t *p_vout = input_GetVout(p_input);
+        if (p_vout != NULL) {
+            var_SetInteger(VLCIntf->p_libvlc, "key-action", ACTIONID_POSITION);
+            vlc_object_release(p_vout);
         }
-        vlc_object_release( p_input );
+        vlc_object_release(p_input);
     }
 }
 
 - (IBAction)telxTransparent:(id)sender
 {
     vlc_object_t *p_vbi;
-    p_vbi = (vlc_object_t *) vlc_object_find_name( pl_Get( VLCIntf ), "zvbi" );
-    if( p_vbi )
-    {
-        var_SetBool( p_vbi, "vbi-opaque", [sender state] );
+    p_vbi = (vlc_object_t *) vlc_object_find_name(pl_Get(VLCIntf), "zvbi");
+    if (p_vbi) {
+        var_SetBool(p_vbi, "vbi-opaque", [sender state]);
         [sender setState: ![sender state]];
-        vlc_object_release( p_vbi );
+        vlc_object_release(p_vbi);
     }
 }
 
@@ -185,47 +182,47 @@
     vlc_object_t *p_vbi;
     int i_page = 0;
 
-    if( [[sender title] isEqualToString: _NS("Index")] )
+    if ([[sender title] isEqualToString: _NS("Index")])
         i_page = 'i' << 16;
-    else if( [[sender title] isEqualToString: _NS("Red")] )
+    else if ([[sender title] isEqualToString: _NS("Red")])
         i_page = 'r' << 16;
-    else if( [[sender title] isEqualToString: _NS("Green")] )
+    else if ([[sender title] isEqualToString: _NS("Green")])
         i_page = 'g' << 16;
-    else if( [[sender title] isEqualToString: _NS("Yellow")] )
+    else if ([[sender title] isEqualToString: _NS("Yellow")])
         i_page = 'y' << 16;
-    else if( [[sender title] isEqualToString: _NS("Blue")] )
+    else if ([[sender title] isEqualToString: _NS("Blue")])
         i_page = 'b' << 16;
-    if( i_page == 0 ) return;
+    if (i_page == 0) return;
 
-    p_vbi = (vlc_object_t *) vlc_object_find_name( pl_Get( VLCIntf ), "zvbi" );
-    if( p_vbi )
-    {
-        var_SetInteger( p_vbi, "vbi-page", i_page );
-        vlc_object_release( p_vbi );
+    p_vbi = (vlc_object_t *) vlc_object_find_name(pl_Get(VLCIntf), "zvbi");
+    if (p_vbi) {
+        var_SetInteger(p_vbi, "vbi-page", i_page);
+        vlc_object_release(p_vbi);
     }
 }
 
 - (IBAction)lockVideosAspectRatio:(id)sender
 {
-    [[VLCCoreInteraction sharedInstance] setAspectRatioLocked: ![sender state]];
+    [[VLCCoreInteraction sharedInstance] setAspectRatioIsLocked: ![sender state]];
     [sender setState: [[VLCCoreInteraction sharedInstance] aspectRatioIsLocked]];
 }
 
 - (IBAction)addSubtitleFile:(id)sender
 {
     NSInteger i_returnValue = 0;
-    input_thread_t * p_input = pl_CurrentInput( VLCIntf );
-    if( !p_input ) return;
+    input_thread_t * p_input = pl_CurrentInput(VLCIntf);
+    if (!p_input)
+        return;
 
-    input_item_t *p_item = input_GetItem( p_input );
-    if( !p_item )
-    {
-        vlc_object_release( p_input );
+    input_item_t *p_item = input_GetItem(p_input);
+    if (!p_item) {
+        vlc_object_release(p_input);
         return;
     }
 
-    char *path = input_item_GetURI( p_item );
-    if( !path ) path = strdup( "" );
+    char *path = input_item_GetURI(p_item);
+    if (!path)
+        path = strdup("");
 
     NSOpenPanel * openPanel = [NSOpenPanel openPanel];
     [openPanel setCanChooseFiles: YES];
@@ -234,112 +231,53 @@
     [openPanel setAllowedFileTypes: [NSArray arrayWithObjects: @"cdg",@"@idx",@"srt",@"sub",@"utf",@"ass",@"ssa",@"aqt",@"jss",@"psb",@"rt",@"smi",@"txt",@"smil", nil]];
     [openPanel setDirectoryURL:[NSURL fileURLWithPath:[[NSString stringWithUTF8String:path] stringByExpandingTildeInPath]]];
     i_returnValue = [openPanel runModal];
-    free( path );
+    free(path);
 
-    if( i_returnValue == NSOKButton )
-    {
+    if (i_returnValue == NSOKButton) {
         NSUInteger c = 0;
-        if( !p_input ) return;
+        if (!p_input)
+            return;
 
         c = [[openPanel URLs] count];
 
-        for (int i = 0; i < c ; i++)
-        {
-            msg_Dbg( VLCIntf, "loading subs from %s", [[[[openPanel URLs] objectAtIndex: i] path] UTF8String] );
-            if( input_AddSubtitle( p_input, [[[[openPanel URLs] objectAtIndex: i] path] UTF8String], TRUE ) )
-                msg_Warn( VLCIntf, "unable to load subtitles from '%s'",
-                         [[[[openPanel URLs] objectAtIndex: i] path] UTF8String] );
+        for (int i = 0; i < c ; i++) {
+            msg_Dbg(VLCIntf, "loading subs from %s", [[[[openPanel URLs] objectAtIndex: i] path] UTF8String]);
+            if (input_AddSubtitle(p_input, [[[[openPanel URLs] objectAtIndex: i] path] UTF8String], TRUE))
+                msg_Warn(VLCIntf, "unable to load subtitles from '%s'",
+                         [[[[openPanel URLs] objectAtIndex: i] path] UTF8String]);
         }
     }
-    vlc_object_release( p_input );
-}
-
-- (void)scrollWheel:(NSEvent *)theEvent
-{
-    intf_thread_t * p_intf = VLCIntf;
-    BOOL b_invertedEventFromDevice = NO;
-    if (OSX_LION)
-    {
-        if ([theEvent isDirectionInvertedFromDevice])
-            b_invertedEventFromDevice = YES;
-    }
-
-    float f_yabsvalue = [theEvent deltaY] > 0.0f ? [theEvent deltaY] : -[theEvent deltaY];
-    float f_xabsvalue = [theEvent deltaX] > 0.0f ? [theEvent deltaX] : -[theEvent deltaX];
-    int i, i_yvlckey, i_xvlckey;
-
-    if (b_invertedEventFromDevice)
-    {
-        if ([theEvent deltaY] > 0.0f)
-            i_yvlckey = KEY_MOUSEWHEELDOWN;
-        else
-            i_yvlckey = KEY_MOUSEWHEELUP;
-
-        if ([theEvent deltaX] > 0.0f)
-            i_xvlckey = KEY_MOUSEWHEELRIGHT;
-        else
-            i_xvlckey = KEY_MOUSEWHEELLEFT;
-    }
-    else
-    {
-        if ([theEvent deltaY] < 0.0f)
-            i_yvlckey = KEY_MOUSEWHEELDOWN;
-        else
-            i_yvlckey = KEY_MOUSEWHEELUP;
-
-        if ([theEvent deltaX] < 0.0f)
-            i_xvlckey = KEY_MOUSEWHEELRIGHT;
-        else
-            i_xvlckey = KEY_MOUSEWHEELLEFT;
-    }
-
-    /* Send multiple key event, depending on the intensity of the event */
-    for (i = 0; i < (int)(f_yabsvalue/4.+1.) && f_yabsvalue > 0.05 ; i++)
-        var_SetInteger( p_intf->p_libvlc, "key-pressed", i_yvlckey );
-
-    /* Prioritize Y event (sound volume) over X event */
-    if (f_yabsvalue < 0.05)
-    {
-        for (i = 0; i < (int)(f_xabsvalue/6.+1.) && f_xabsvalue > 0.05; i++)
-         var_SetInteger( p_intf->p_libvlc, "key-pressed", i_xvlckey );
-    }
+    vlc_object_release(p_input);
 }
 
 - (BOOL)keyEvent:(NSEvent *)o_event
 {
     BOOL eventHandled = NO;
-    unichar key = [[o_event charactersIgnoringModifiers] characterAtIndex: 0];
+    NSString * characters = [o_event charactersIgnoringModifiers];
+    if ([characters length] > 0) {
+        unichar key = [characters characterAtIndex: 0];
 
-    if( key )
-    {
-        input_thread_t * p_input = pl_CurrentInput( VLCIntf );
-        if( p_input != NULL )
-        {
-            vout_thread_t *p_vout = input_GetVout( p_input );
+        if (key) {
+            input_thread_t * p_input = pl_CurrentInput(VLCIntf);
+            if (p_input != NULL) {
+                vout_thread_t *p_vout = input_GetVout(p_input);
 
-            if( p_vout != NULL )
-            {
-                /* Escape */
-                if( key == (unichar) 0x1b )
-                {
-                    vout_thread_t *p_vout = getVout();
-                    if (p_vout)
-                    {
-                        if (var_GetBool( p_vout, "fullscreen" ))
-                        {
+                if (p_vout != NULL) {
+                    /* Escape */
+                    if (key == (unichar) 0x1b) {
+                        if (var_GetBool(p_vout, "fullscreen")) {
                             [[VLCCoreInteraction sharedInstance] toggleFullscreen];
                             eventHandled = YES;
                         }
                     }
+                    else if (key == ' ') {
+                        [self play:self];
+                        eventHandled = YES;
+                    }
+                    vlc_object_release(p_vout);
                 }
-                else if( key == ' ' )
-                {
-                    [self play:self];
-                    eventHandled = YES;
-                }
-                vlc_object_release( (vlc_object_t *)p_vout );
+                vlc_object_release(p_input);
             }
-            vlc_object_release( p_input );
         }
     }
     return eventHandled;
@@ -347,32 +285,25 @@
 
 - (IBAction)goToSpecificTime:(id)sender
 {
-    if( sender == o_specificTime_cancel_btn )
+    if (sender == o_specificTime_cancel_btn)
     {
         [NSApp endSheet: o_specificTime_win];
         [o_specificTime_win close];
-    }
-    else if( sender == o_specificTime_ok_btn )
-    {
-        input_thread_t * p_input = pl_CurrentInput( VLCIntf );
-        if( p_input )
-        {
+    } else if (sender == o_specificTime_ok_btn) {
+        input_thread_t * p_input = pl_CurrentInput(VLCIntf);
+        if (p_input) {
             int64_t timeInSec = 0;
             NSString * fieldContent = [o_specificTime_enter_fld stringValue];
-            if( [[fieldContent componentsSeparatedByString: @":"] count] > 1 &&
-                [[fieldContent componentsSeparatedByString: @":"] count] <= 3 )
-            {
+            if ([[fieldContent componentsSeparatedByString: @":"] count] > 1 &&
+               [[fieldContent componentsSeparatedByString: @":"] count] <= 3) {
                 NSArray * ourTempArray = \
                     [fieldContent componentsSeparatedByString: @":"];
 
-                if( [[fieldContent componentsSeparatedByString: @":"] count] == 3 )
-                {
+                if ([[fieldContent componentsSeparatedByString: @":"] count] == 3) {
                     timeInSec += ([[ourTempArray objectAtIndex: 0] intValue] * 3600); //h
                     timeInSec += ([[ourTempArray objectAtIndex: 1] intValue] * 60); //m
                     timeInSec += [[ourTempArray objectAtIndex: 2] intValue];        //s
-                }
-                else
-                {
+                } else {
                     timeInSec += ([[ourTempArray objectAtIndex: 0] intValue] * 60); //m
                     timeInSec += [[ourTempArray objectAtIndex: 1] intValue]; //s
                 }
@@ -380,30 +311,27 @@
             else
                 timeInSec = [fieldContent intValue];
 
-            input_Control( p_input, INPUT_SET_TIME, (int64_t)(timeInSec * 1000000));
-            vlc_object_release( p_input );
+            input_Control(p_input, INPUT_SET_TIME, (int64_t)(timeInSec * 1000000));
+            vlc_object_release(p_input);
         }
 
         [NSApp endSheet: o_specificTime_win];
         [o_specificTime_win close];
-    }
-    else
-    {
-        input_thread_t * p_input = pl_CurrentInput( VLCIntf );
-        if( p_input )
-        {
+    } else {
+        input_thread_t * p_input = pl_CurrentInput(VLCIntf);
+        if (p_input) {
             /* we can obviously only do that if an input is available */
             vlc_value_t pos, length;
-            var_Get( p_input, "time", &pos );
+            var_Get(p_input, "time", &pos);
             [o_specificTime_enter_fld setIntValue: (pos.i_time / 1000000)];
-            var_Get( p_input, "length", &length );
+            var_Get(p_input, "length", &length);
             [o_specificTime_stepper setMaxValue: (length.i_time / 1000000)];
 
             [NSApp beginSheet: o_specificTime_win modalForWindow: \
                 [NSApp mainWindow] modalDelegate: self didEndSelector: nil \
                 contextInfo: nil];
             [o_specificTime_win makeKeyWindow];
-            vlc_object_release( p_input );
+            vlc_object_release(p_input);
         }
     }
 }

@@ -9,7 +9,6 @@ $Id$
  * access_avio: Access and Stream output module using libavformat network
  * access_bd: Blu-Ray Disc access
  * access_directory: Access module to read files in a directory
- * access_dv: Raw1394 Digital Video (Firewire/IEEE1394/I-Link) access module
  * access_eyetv: Access module to connect to our plugin running within EyeTV
  * access_ftp: FTP Network access module
  * access_gnomevfs: GnomeVFS access
@@ -23,14 +22,11 @@ $Id$
  * access_output_file: File access_output module
  * access_output_http: HTTP Network access module
  * access_output_livehttp: Live HTTP stream output
- * access_output_rtmp: RTMP stream output
  * access_output_shout: Shoutcast access output
  * access_output_udp: UDP Network access_output module
  * access_rar: RAR access
  * access_realrtsp: Real RTSP access
- * access_rtmp: RTMP network access
  * access_sftp: SFTP network access module
- * access_shm: Shared memory framebuffer access module
  * access_smb: SMB shares access module
  * access_tcp: TCP Network access module
  * access_udp: UDP Network access module
@@ -39,15 +35,15 @@ $Id$
  * adpcm: ADPCM audio decoder
  * adummy: dummy audio output
  * aes3: aes3 decoder/packetizer
+ * afile: Audio output to write to a file
  * aiff: AIFF demuxer
  * alphamask: Alpha layer mask video filter
  * alsa: audio output module using the ALSA API
  * amem: audio memory output
  * anaglyph: anaglyph 3d video filter
+ * android_audiotrack: audio output for Android, based on AudioTrack
  * android_surface: video output for Android, based on Surface
  * antiflicker: anti-flicker video filter
- * aout_directx: audio output module using the DirectX API
- * aout_file: Audio output to write to a file
  * araw: Pseudo audio decoder for raw PCM
  * asf: ASF demuxer
  * atmo: Ambilight-like video-output
@@ -80,13 +76,13 @@ $Id$
  * clone: Clone video filter
  * colorthres:  Theshold color based on similarity to reference color Video filter
  * compressor: Dynamic range compressor
- * converter_fixed: Fixed-point audio format conversions
  * crop: Crop video filter
  * croppadd: Crop/Padd image filter
  * crystalhd: crystalhd decoder
  * cvdsub: CVD subtitles decoder
+ * dash: MPEG DASH playback
  * dbus: D-Bus control interface
- * dc1394: firewire input module
+ * dc1394: IIDC (DCAM) FireWire input module
  * ddummy: dummy decoder
  * decklink: input module to read from a Blackmagic SDI card
  * decomp: Decompression module
@@ -97,8 +93,9 @@ $Id$
  * dirac: BBC Dirac codec
  * direct2d: video output module using the Direct2D API
  * direct3d: video output module using the Direct3D API
+ * directdraw: video output module using the DirectDraw API
  * directfb: Direct Framebuffer video output
- * directx: video output module using the DirectX API
+ * directsound: audio output module using the DirectSound API
  * dmo: a DirectMediaObject decoder that uses DirectMedia to decode video (WMV3)
  * dolby_surround_decoder: simple decoder for dolby surround encoded streams
  * drawable: legacy LibVLC video window provider
@@ -108,6 +105,7 @@ $Id$
  * dtstospdif: Audio converter that encapsulates DTS into S/PDIF
  * dtv: DVB support (superseds bda module for Windows)
  * dummy: dummy interface
+ * dv1394: Digital Video (Firewire/IEEE1394/I-Link) access module
  * dvbsub: decoder module for subs in dvb streams
  * dvdnav: access module for DVDs with libdvdnav
  * dvdread: input module for accessing DVDs, uses libdvdread
@@ -121,9 +119,7 @@ $Id$
  * extract: Extract RGB components video filter
  * faad: AAC decoder using libfaad2
  * fb: video output module for the Linux framebuffer
- * fbosd: framebuffer osd plugin
  * filesystem: Filesystem access module
- * fixed32_mixer: Fixed-point audio mixer
  * flac: Flac decoder using libflac
  * flacsys: FLAC demuxer
  * float32_mixer: Precise float32 audio mixer
@@ -148,10 +144,10 @@ $Id$
  * growl: announce currently playing stream to growl
  * h264: H264 decoder
  * headphone_channel_mixer:  headphone channel mixer with virtual spatialization effect
- * hildon: Maemo interface based on Hildon
  * hotkeys: hotkeys control module
  * hqdn3d: High Quality denoising filter
  * htcpcp: HTCPCP access module
+ * httplive: HTTP Live streaming for playback
  * i420_rgb: planar YUV to packed RGB conversion functions
  * i420_rgb_mmx: MMX accelerated version of i420_rgb
  * i420_rgb_sse2: sse2 accelerated version of i420_rgb
@@ -166,6 +162,7 @@ $Id$
  * idummy: dummy input
  * image: Image file video output
  * inhibit: preventing the computer from suspending
+ * integer_mixer: Integer audio mixer
  * invert: inverse video filter
  * iomx: IPC/OpenMaxIL for Android
  * jack: jack server audio output
@@ -192,11 +189,6 @@ $Id$
  * mce: Nokia MCE screen unblanking module
  * media_library: a sql based media library
  * mediadirs: Picture/Music/Video user directories as service discoveries
- * memcpy3dn: 3D Now! accelerated version of memcpy
- * memcpy: default unaccelerated memcpy
- * memcpyaltivec: Altivec accelerated version of memcpy
- * memcpymmx: MMX accelerated version of memcpy
- * memcpymmxext: MMX EXT accelerated version of memcpy
  * minimal_macosx: a minimal Mac OS X GUI, using the FrameWork
  * mirror: mirror video filter
  * mjpeg: a demuxer for multipart and concatenated JPEG data
@@ -212,7 +204,6 @@ $Id$
  * mpeg_audio: MPEG audio parser/packetizer
  * mpgatofixed32: MPEG-1 & 2 audio layer I,II,III audio decoder using MAD
  * mpgv: MPEG-I/II Video demuxer
- * msn: announce currently playing stream to MSN
  * mtp: MTP interface module
  * mux_asf: ASF muxer
  * mux_avi: AVI muxer
@@ -237,6 +228,7 @@ $Id$
  * opencv_example: OpenCV example (face identification)
  * opencv_wrapper: OpenCV wrapper video filter
  * opensles_android: OpenSL ES audio output for Android
+ * opus: a opus audio decoder/packetizer using the libopus library
  * os2drive: service discovery for OS/2 drives
  * osd_parser: OSD import module
  * osdmenu: video_filter for displaying and streaming a On Screen Display menu
@@ -265,7 +257,6 @@ $Id$
  * pulsesrc: PulseAudio audio input
  * puzzle: puzzle video filter
  * pva: PVA demuxer
- * pvr: input module to read from a PVR card
  * qt4: interface module using the cross-platform Qt4 library
  * qtcapture: Quicktime Video Capture
  * qtsound: Quicktime Audio Capture
@@ -276,6 +267,7 @@ $Id$
  * rawvid: raw video input module for vlc
  * rawvideo: Pseudo audio-decoder for raw video
  * real: partial Real audio/video demuxer
+ * record: record any stream instantly
  * remap: audio channel remapping filter
  * remoteosd: Remote-OSD over VNC
  * ripple: Ripple video effect
@@ -295,10 +287,13 @@ $Id$
  * sepia: Sepia video filter
  * sharpen: Sharpen video filter
  * shine: MP3 encoder using Shine, a fixed point implementation
+ * shm: Shared memory framebuffer access module
  * sid: Sidplay demuxer
  * simple_channel_mixer: channel mixer
+ * simple_channel_mixer_neon: channel mixer using NEON assembly
  * skins2: Skinnable interface, new generation
  * smf: Standard MIDI file demuxer
+ * smooth: Microsoft Smooth Streaming input
  * sndio: OpenBSD sndio audio output
  * spatializer: A spatializer audio filter
  * speex: a speex audio decoder/packetizer using the libspeex library
@@ -308,10 +303,7 @@ $Id$
  * stats: Stats encoder function
  * stereo_widen: Enhances stereo effect
  * stl: EBU STL decoder
- * stream_filter_dash: MPEG DASH playback
- * stream_filter_httplive: HTTP Live streaming for playback
  * stream_filter_rar: Stream filter to read inside Rar files
- * stream_filter_record: record any stream instantly
  * stream_out_autodel: monitor mux inputs and automatically add/delete streams
  * stream_out_bridge: "exchange" streams between sout instances. To be used with VLM
  * stream_out_delay: introduce delay in an ES when streaming
@@ -341,7 +333,6 @@ $Id$
  * t140: T.140 text encoder
  * taglib: Taglib tags parser and writer
  * tdummy: dummy text renderer
- * telepathy: Telepathy Presence information using MissionControl notification
  * telx: teletext subtitles decoder
  * theora: a theora video decoder/packetizer/encoder using the libtheora library
  * transform: filter for horizontal and vertical image flips and 90° rotations
@@ -353,6 +344,7 @@ $Id$
  * ty: TY demuxer
  * udev: udev probing module
  * ugly_resampler: Ugly audio resampler
+ * uleaddvaudio: codec for DV Audio from Ulead
  * upnp: libupnp UPNP service discovery
  * v4l2: Video 4 Linux 2 input module
  * vc1: VC-1 Video demuxer
@@ -364,18 +356,19 @@ $Id$
  * vobsub: VobSUB subtitles demuxer
  * voc: VOC demuxer
  * vod_rtsp: RTSP VoD module
+ * volume_neon: audio volume optimized for ARM NEON
  * vorbis: a vorbis audio decoder/packetizer using the libvorbis library
  * vout_ios: iOS video output
  * vout_macosx: MacOS X OpenGL provider
  * vout_sdl: video output module using the SDL library
  * vsxu: audio visualization using Vovoid VSXu
  * wall: image wall filter
+ * wasapi: Windows Audio Session API audio output
  * wav: Wav demuxer
  * wave: Wave video effect
  * waveout: simple audio output module for Windows
  * win32text: Text renderer using native Win32 API
  * windrive: Windows logical disc drives
- * wingapi: Win CE video output
  * wingdi: WIN 32 / WIN CE GDI video output
  * wma_fixed: wma decoder using integer decoder from Rockbox
  * x26410b: H264 10 bit video encoder using X264
@@ -389,7 +382,6 @@ $Id$
  * xcb_xv: a XVideo video output using XCB
  * xdg_screensaver: xdg-utils screensaver inhibition
  * xml: LibXML xml parser
- * xosd: X On Screen Display interface
  * xscreensaver: Xscreensaver inhibition
  * yuv: yuv video output
  * yuv_rgb_neon: yuv->RGB chroma converter for NEON devices

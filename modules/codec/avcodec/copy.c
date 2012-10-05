@@ -47,14 +47,30 @@
         store " %%xmm4,   48(%[dst])\n" \
         : : [dst]"r"(dstp), [src]"r"(srcp) : "memory")
 
+#ifndef __SSE4A__
+# undef vlc_CPU_SSE4A
+# define vlc_CPU_SSE4A() ((cpu & VLC_CPU_SSE4A) != 0)
+#endif
+
+#ifndef __SSSE3__
+# undef vlc_CPU_SSSE3
+# define vlc_CPU_SSSE3() ((cpu & VLC_CPU_SSSE3) != 0)
+#endif
+
 /* Execute the instruction op only if SSE2 is supported. */
 #ifdef CAN_COMPILE_SSE2
-#   define ASM_SSE2(cpu, op) do {          \
-        if (cpu & CPU_CAPABILITY_SSE2)  \
-            asm volatile (op);    \
+# ifdef __SSE2__
+#  define ASM_SSE2(cpu, op) asm volatile (op)
+# else
+#  define ASM_SSE2(cpu, op) do { \
+    if (cpu & VLC_CPU_SSE2) \
+        asm volatile (op); \
     } while (0)
+#  undef vlc_CPU_SSE2
+#  define vlc_CPU_SSE2() ((cpu & VLC_CPU_SSE2) != 0)
+# endif
 #else
-#   define ASM_SSE2(cpu, op)
+# define ASM_SSE2(cpu, op)
 #endif
 
 /* Optimized copy from "Uncacheable Speculative Write Combining" memory
@@ -77,7 +93,7 @@ static void CopyFromUswc(uint8_t *dst, size_t dst_pitch,
             dst[x] = src[x];
 
 #ifdef CAN_COMPILE_SSE4_1
-        if (cpu & CPU_CAPABILITY_SSE4_1) {
+        if (vlc_CPU_SSE4_1()) {
             if (!unaligned) {
                 for (; x+63 < width; x += 64)
                     COPY64(&dst[x], &src[x], "movntdqa", "movdqa");
@@ -88,7 +104,7 @@ static void CopyFromUswc(uint8_t *dst, size_t dst_pitch,
         } else
 #endif
 #ifdef CAN_COMPILE_SSE2
-        if (cpu & CPU_CAPABILITY_SSE2) {
+        if (vlc_CPU_SSE2()) {
             if (!unaligned) {
                 for (; x+63 < width; x += 64)
                     COPY64(&dst[x], &src[x], "movdqa", "movdqa");
@@ -121,7 +137,7 @@ static void Copy2d(uint8_t *dst, size_t dst_pitch,
         bool unaligned = ((intptr_t)dst & 0x0f) != 0;
 
 #ifdef CAN_COMPILE_SSE2
-        if (cpu & CPU_CAPABILITY_SSE2) {
+        if (vlc_CPU_SSE2()) {
             if (!unaligned) {
                 for (; x+63 < width; x += 64)
                     COPY64(&dst[x], &src[x], "movdqa", "movntdq");
@@ -174,7 +190,8 @@ static void SplitUV(uint8_t *dstu, size_t dstu_pitch,
     "movhpd %%xmm3,  24(%[dst2])\n"
 
 #ifdef CAN_COMPILE_SSSE3
-        if (cpu & CPU_CAPABILITY_SSSE3) {
+        if (vlc_CPU_SSSE3())
+        {
             for (x = 0; x < (width & ~31); x += 32) {
                 asm volatile (
                     "movdqu (%[shuffle]), %%xmm7\n"
@@ -189,7 +206,7 @@ static void SplitUV(uint8_t *dstu, size_t dstu_pitch,
         } else
 #endif
 #ifdef CAN_COMPILE_SSE2
-        if (cpu & CPU_CAPABILITY_SSE2) {
+        if (vlc_CPU_SSE2()) {
             for (x = 0; x < (width & ~31); x += 32) {
                 asm volatile (
                     "movdqu (%[mask]), %%xmm7\n"

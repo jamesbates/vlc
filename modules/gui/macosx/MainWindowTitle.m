@@ -26,6 +26,7 @@
 #import "MainWindowTitle.h"
 #import "CoreInteraction.h"
 #import "CompatibilityFixes.h"
+#import <SystemConfiguration/SystemConfiguration.h> // for the revealInFinder clone
 
 /*****************************************************************************
  * VLCMainWindowTitleView
@@ -110,9 +111,8 @@
 
 - (void)loadButtonIcons
 {
-    if (OSX_LION)
-    {
-        if( [NSColor currentControlTint] == NSBlueControlTint )
+    if (!OSX_SNOW_LEOPARD) {
+        if ([NSColor currentControlTint] == NSBlueControlTint)
         {
             o_red_img = [[NSImage imageNamed:@"lion-window-close"] retain];
             o_red_over_img = [[NSImage imageNamed:@"lion-window-close-over"] retain];
@@ -135,7 +135,7 @@
             o_green_on_img = [[NSImage imageNamed:@"lion-window-zoom-on-graphite"] retain];
         }
     } else {
-        if( [NSColor currentControlTint] == NSBlueControlTint )
+        if ([NSColor currentControlTint] == NSBlueControlTint)
         {
             o_red_img = [[NSImage imageNamed:@"snowleo-window-close"] retain];
             o_red_over_img = [[NSImage imageNamed:@"snowleo-window-close-over"] retain];
@@ -173,20 +173,17 @@
         [[self window] miniaturize: sender];
     else if (sender == o_green_btn)
         [[self window] performZoom: sender];
-    else if (sender == o_fullscreen_btn)
-    {
+    else if (sender == o_fullscreen_btn) {
         // set fs directly to true, as the vars can be already true in some configs
-        var_SetBool( pl_Get( VLCIntf ), "fullscreen", true );
+        var_SetBool(pl_Get(VLCIntf), "fullscreen", true);
 
         vout_thread_t *p_vout = getVout();
-        if( p_vout )
-        {
-            var_SetBool( p_vout, "fullscreen", true );
-            vlc_object_release( p_vout );
-        }    
-    }
-    else
-        msg_Err( VLCIntf, "unknown button action sender" );
+        if (p_vout) {
+            var_SetBool(p_vout, "fullscreen", true);
+            vlc_object_release(p_vout);
+        }
+    } else
+        msg_Err(VLCIntf, "unknown button action sender");
 
     [self setWindowButtonOver: NO];
     [self setWindowFullscreenButtonOver: NO];
@@ -194,8 +191,7 @@
 
 - (void)setWindowTitle:(NSString *)title
 {
-    if (!o_window_title_shadow)
-    {
+    if (!o_window_title_shadow) {
         o_window_title_shadow = [[NSShadow alloc] init];
         [o_window_title_shadow setShadowColor:[NSColor colorWithCalibratedWhite:1.0 alpha:0.5]];
         [o_window_title_shadow setShadowOffset:NSMakeSize(0.0, -1.5)];
@@ -219,14 +215,11 @@
 
 - (void)setWindowButtonOver:(BOOL)b_value
 {
-    if( b_value )
-    {
+    if (b_value) {
         [o_red_btn setImage: o_red_over_img];
         [o_yellow_btn setImage: o_yellow_over_img];
         [o_green_btn setImage: o_green_over_img];
-    }
-    else
-    {
+    } else {
         [o_red_btn setImage: o_red_img];
         [o_yellow_btn setImage: o_yellow_img];
         [o_green_btn setImage: o_green_img];
@@ -240,6 +233,38 @@
     else
         [o_fullscreen_btn setImage: [NSImage imageNamed:@"window-fullscreen"]];
 }
+
+- (void)mouseDown:(NSEvent *)event
+{
+    NSPoint ml = [self convertPoint: [event locationInWindow] fromView: self];
+    if (([[self window] frame].size.height - ml.y) <= 22. && [event clickCount] == 2) {
+        //Get settings from "System Preferences" >  "Appearance" > "Double-click on windows title bar to minimize"
+        NSString *const MDAppleMiniaturizeOnDoubleClickKey = @"AppleMiniaturizeOnDoubleClick";
+        NSUserDefaults *userDefaults = [NSUserDefaults standardUserDefaults];
+        [userDefaults addSuiteNamed:NSGlobalDomain];
+
+        if ([[userDefaults objectForKey:MDAppleMiniaturizeOnDoubleClickKey] boolValue])
+            [[self window] miniaturize:self];
+    }
+
+    [super mouseDown: event];
+}
+
+- (NSButton*)closeButton
+{
+    return o_red_btn;
+}
+
+- (NSButton*)minimizeButton
+{
+    return o_yellow_btn;
+}
+
+- (NSButton*)zoomButton
+{
+    return o_green_btn;
+}
+
 @end
 
 /*****************************************************************************
@@ -290,9 +315,8 @@
     id theControlView = [self controlView];
     if ([theControlView respondsToSelector: @selector(extendedAccessibilityIsAttributeSettable:)]) {
         NSNumber *theValue = [theControlView extendedAccessibilityIsAttributeSettable: theAttributeName];
-        if (theValue) {
+        if (theValue)
             return [theValue boolValue]; // same basic strategy we use in -accessibilityAttributeValue:
-        }
     }
     return [super accessibilityIsAttributeSettable: theAttributeName];
 }
@@ -334,8 +358,7 @@
                 if (windowFrame.size.width < winMinSize.width)
                     windowFrame.size.width = winMinSize.width;
 
-                if (windowFrame.size.height < winMinSize.height)
-                {
+                if (windowFrame.size.height < winMinSize.height) {
                     windowFrame.size.height = winMinSize.height;
                     windowFrame.origin.y = oldOriginY;
                 }
@@ -398,12 +421,10 @@
 
 - (void)accessibilityPerformAction: (NSString*)theActionName {
     if ([theActionName isEqualToString: NSAccessibilityPressAction]) {
-        if ([self isEnabled]) {
+        if ([self isEnabled])
             [self performClick: nil];
-        }
-    } else {
+    } else
         [super accessibilityPerformAction: theActionName];
-    }
 }
 
 @end
@@ -438,5 +459,126 @@
     return ([theAttributeName isEqualToString: NSAccessibilitySubroleAttribute] ? NSAccessibilityFullScreenButtonAttribute : nil);
 }
 #endif
+
+@end
+
+
+@implementation VLCWindowTitleTextField
+
+- (void)dealloc
+{
+    if (contextMenu)
+        [contextMenu release];
+
+    [super dealloc];
+}
+
+- (void)showRightClickMenuWithEvent:(NSEvent *)o_event
+{
+    if (contextMenu)
+        [contextMenu release];
+
+    NSURL * representedURL = [[self window] representedURL];
+    if (! representedURL)
+        return;
+
+    NSArray * pathComponents;
+    pathComponents = [representedURL pathComponents];
+
+    if (!pathComponents)
+        return;
+
+    contextMenu = [[NSMenu alloc] initWithTitle: [[NSFileManager defaultManager] displayNameAtPath: [representedURL path]]];
+
+    NSUInteger count = [pathComponents count];
+    NSImage * icon;
+    NSMenuItem * currentItem;
+    NSMutableString * currentPath;
+    NSSize iconSize = NSMakeSize(16., 16.);
+    for (NSUInteger i = count - 1; i > 0; i--) {
+        currentPath = [NSMutableString stringWithCapacity:1024];
+        for (NSUInteger y = 0; y < i; y++)
+            [currentPath appendFormat: @"/%@", [pathComponents objectAtIndex:y + 1]];
+
+        [contextMenu addItemWithTitle: [[NSFileManager defaultManager] displayNameAtPath: currentPath] action:@selector(revealInFinder:) keyEquivalent:@""];
+        currentItem = [contextMenu itemAtIndex:[contextMenu numberOfItems] - 1];
+        [currentItem setTarget: self];
+
+        icon = [[NSWorkspace sharedWorkspace] iconForFile:currentPath];
+        [icon setSize: iconSize];
+        [currentItem setImage: icon];
+    }
+
+    if ([[pathComponents objectAtIndex: 1] isEqualToString:@"Volumes"]) {
+        /* we don't want to show the Volumes item, since the Cocoa does it neither */
+        currentItem = [contextMenu itemWithTitle:[[NSFileManager defaultManager] displayNameAtPath: @"/Volumes"]];
+        if (currentItem)
+            [contextMenu removeItem: currentItem];
+    } else {
+        /* we're on the boot drive, so add it since it isn't part of the components */
+        [contextMenu addItemWithTitle: [[NSFileManager defaultManager] displayNameAtPath:@"/"] action:@selector(revealInFinder:) keyEquivalent:@""];
+        currentItem = [contextMenu itemAtIndex: [contextMenu numberOfItems] - 1];
+        icon = [[NSWorkspace sharedWorkspace] iconForFile:@"/"];
+        [icon setSize: iconSize];
+        [currentItem setImage: icon];
+        [currentItem setTarget: self];
+    }
+
+    /* add the computer item */
+    [contextMenu addItemWithTitle: [(NSString*)SCDynamicStoreCopyComputerName(NULL, NULL) autorelease] action:@selector(revealInFinder:) keyEquivalent:@""];
+    currentItem = [contextMenu itemAtIndex: [contextMenu numberOfItems] - 1];
+    icon = [NSImage imageNamed: NSImageNameComputer];
+    [icon setSize: iconSize];
+    [currentItem setImage: icon];
+    [currentItem setTarget: self];
+
+    [NSMenu popUpContextMenu: contextMenu withEvent: o_event forView: [self superview]];
+}
+
+- (IBAction)revealInFinder:(id)sender
+{
+    NSUInteger count = [contextMenu numberOfItems];
+    NSUInteger selectedItem = [contextMenu indexOfItem: sender];
+
+    if (selectedItem == count - 1) { // the fake computer item
+        [[NSWorkspace sharedWorkspace] selectFile: @"/" inFileViewerRootedAtPath: @""];
+        return;
+    }
+
+    NSURL * representedURL = [[self window] representedURL];
+    if (! representedURL)
+        return;
+
+    if (selectedItem == 0) { // the actual file, let's save time
+        [[NSWorkspace sharedWorkspace] selectFile: [representedURL path] inFileViewerRootedAtPath: [representedURL path]];
+        return;
+    }
+
+    NSArray * pathComponents;
+    pathComponents = [representedURL pathComponents];
+    if (!pathComponents)
+        return;
+
+    NSMutableString * currentPath;
+    currentPath = [NSMutableString stringWithCapacity:1024];
+    selectedItem = count - selectedItem;
+
+    /* fix for non-startup volumes */
+    if ([[pathComponents objectAtIndex:1] isEqualToString:@"Volumes"])
+        selectedItem += 1;
+
+    for (NSUInteger y = 1; y < selectedItem; y++)
+        [currentPath appendFormat: @"/%@", [pathComponents objectAtIndex:y]];
+
+    [[NSWorkspace sharedWorkspace] selectFile: currentPath inFileViewerRootedAtPath: currentPath];
+}
+
+- (void)rightMouseDown:(NSEvent *)o_event
+{
+    if ([o_event type] == NSRightMouseDown)
+        [self showRightClickMenuWithEvent:o_event];
+
+    [super mouseDown: o_event];
+}
 
 @end

@@ -19,6 +19,7 @@
  @ Inc., 51 Franklin Street, Fifth Floor, Boston MA 02110-1301, USA.
  @****************************************************************************/
 
+	.syntax unified
 	.fpu neon
 	.text
 
@@ -74,7 +75,7 @@ coefficients:
     .short    4992
     .short  -18432
 
-	.align
+	.align 2
 	.global nv12_rgb_neon
 	.type	nv12_rgb_neon, %function
 nv12_rgb_neon:
@@ -108,7 +109,7 @@ nv12_rgb_neon:
 	sub			YPAD,	YPITCH,	WIDTH
 
 loop_row:
-	movgts	COUNT,	WIDTH
+	movsgt	COUNT,	WIDTH
 	add		O2,	O1,	OPITCH
 	add		Y2,	Y1,	YPITCH
 	/* exit if all rows have been processed */

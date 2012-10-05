@@ -29,12 +29,10 @@
 
 #include <assert.h>
 #include <errno.h>
-#include <fcntl.h>
 #include <poll.h>
 
 #include <vlc_common.h>
 #include <vlc_access.h>
-#include <vlc_fs.h>
 
 #include "v4l2.h"
 
@@ -51,10 +49,10 @@ struct access_sys_t
     vlc_v4l2_ctrl_t *controls;
 };
 
-static block_t *AccessRead( access_t * );
-static ssize_t AccessReadStream( access_t *, uint8_t *, size_t );
+static block_t *MMapBlock (access_t *);
+static block_t *ReadBlock (access_t *);
 static int AccessControl( access_t *, int, va_list );
-static int InitVideo(access_t *, int);
+static int InitVideo(access_t *, int, uint32_t);
 
 int AccessOpen( vlc_object_t *obj )
 {
@@ -72,32 +70,21 @@ int AccessOpen( vlc_object_t *obj )
     char *path = var_InheritString (obj, CFG_PREFIX"dev");
     if (unlikely(path == NULL))
         goto error; /* probably OOM */
-    msg_Dbg (obj, "opening device '%s'", path);
 
-    int rawfd = vlc_open (path, O_RDWR);
-    if (rawfd == -1)
-    {
-        msg_Err (obj, "cannot open device '%s': %m", path);
-        free (path);
-        goto error;
-    }
+    uint32_t caps;
+    int fd = OpenDevice (obj, path, &caps);
     free (path);
-
-    int fd = v4l2_fd_open (rawfd, 0);
     if (fd == -1)
-    {
-        msg_Warn (obj, "cannot initialize user-space library: %m");
-        /* fallback to direct kernel mode anyway */
-        fd = rawfd;
-    }
+        goto error;
     sys->fd = fd;
 
-    if (InitVideo (access, fd))
+    if (InitVideo (access, fd, caps))
     {
         v4l2_close (fd);
         goto error;
     }
 
+    sys->controls = ControlsInit (VLC_OBJECT(access), fd);
     access->pf_seek = NULL;
     access->pf_control = AccessControl;
     return VLC_SUCCESS;
@@ -106,34 +93,11 @@ error:
     return VLC_EGENERIC;
 }
 
-int InitVideo (access_t *access, int fd)
+int InitVideo (access_t *access, int fd, uint32_t caps)
 {
     access_sys_t *sys = access->p_sys;
 
-    /* Get device capabilites */
-    struct v4l2_capability cap;
-    if (v4l2_ioctl (fd, VIDIOC_QUERYCAP, &cap) < 0)
-    {
-        msg_Err (access, "cannot get device capabilities: %m");
-        return -1;
-    }
-
-    msg_Dbg (access, "device %s using driver %s (version %u.%u.%u) on %s",
-             cap.card, cap.driver, (cap.version >> 16) & 0xFF,
-             (cap.version >> 8) & 0xFF, cap.version & 0xFF, cap.bus_info);
-    msg_Dbg (access, "the device has the capabilities: 0x%08X",
-             cap.capabilities);
-    msg_Dbg (access, " (%c) Video Capture, (%c) Audio, (%c) Tuner, (%c) Radio",
-             (cap.capabilities & V4L2_CAP_VIDEO_CAPTURE  ? 'X':' '),
-             (cap.capabilities & V4L2_CAP_AUDIO  ? 'X':' '),
-             (cap.capabilities & V4L2_CAP_TUNER  ? 'X':' '),
-             (cap.capabilities & V4L2_CAP_RADIO  ? 'X':' '));
-    msg_Dbg (access, " (%c) Read/Write, (%c) Streaming, (%c) Asynchronous",
-             (cap.capabilities & V4L2_CAP_READWRITE ? 'X':' '),
-             (cap.capabilities & V4L2_CAP_STREAMING ? 'X':' '),
-             (cap.capabilities & V4L2_CAP_ASYNCIO ? 'X':' '));
-
-    if (!(cap.capabilities & V4L2_CAP_VIDEO_CAPTURE))
+    if (!(caps & V4L2_CAP_VIDEO_CAPTURE))
     {
         msg_Err (access, "not a video capture device");
         return -1;
@@ -142,19 +106,35 @@ int InitVideo (access_t *access, int fd)
     if (SetupInput (VLC_OBJECT(access), fd))
         return -1;
 
-    sys->controls = ControlsInit (VLC_OBJECT(access), fd);
-
-    /* Try and find default resolution if not specified */
-    struct v4l2_format fmt = { .type = V4L2_BUF_TYPE_VIDEO_CAPTURE };
-    if (v4l2_ioctl (fd, VIDIOC_G_FMT, &fmt) < 0)
+    /* NOTE: The V4L access_demux expects a VLC FOURCC as "chroma". It is used to set the
+     * es_format_t structure correctly. However, the V4L access (*here*) has no use for a
+     * VLC FOURCC and expects a V4L2 format directly instead. That is confusing :-( */
+    uint32_t pixfmt = 0;
+    char *fmtstr = var_InheritString (access, CFG_PREFIX"chroma");
+    if (fmtstr != NULL && strlen (fmtstr) <= 4)
     {
-        msg_Err (access, "cannot get default format: %m");
-        return -1;
+        memcpy (&pixfmt, fmtstr, strlen (fmtstr));
+        free (fmtstr);
     }
+    else
+    /* Use the default^Wprevious format if none specified */
+    {
+        struct v4l2_format fmt = { .type = V4L2_BUF_TYPE_VIDEO_CAPTURE };
+        if (v4l2_ioctl (fd, VIDIOC_G_FMT, &fmt) < 0)
+        {
+            msg_Err (access, "cannot get default format: %m");
+            return -1;
+        }
+        pixfmt = fmt.fmt.pix.pixelformat;
+    }
+    msg_Dbg (access, "selected format %4.4s", (const char *)&pixfmt);
 
-    /* Print extra info */
-    msg_Dbg (access, "%d bytes maximum for complete image",
-             fmt.fmt.pix.sizeimage );
+    struct v4l2_format fmt;
+    struct v4l2_streamparm parm;
+    if (SetupFormat (access, fd, pixfmt, &fmt, &parm))
+        return -1;
+
+    msg_Dbg (access, "%"PRIu32" bytes for complete image", fmt.fmt.pix.sizeimage);
     /* Check interlacing */
     switch (fmt.fmt.pix.field)
     {
@@ -178,25 +158,26 @@ int InitVideo (access_t *access, int fd)
     }
 
     /* Init I/O method */
-    if (cap.capabilities & V4L2_CAP_STREAMING)
+    if (caps & V4L2_CAP_STREAMING)
     {
         sys->bufc = 4;
         sys->bufv = StartMmap (VLC_OBJECT(access), fd, &sys->bufc);
         if (sys->bufv == NULL)
             return -1;
-        access->pf_block = AccessRead;
+        access->pf_block = MMapBlock;
     }
-    else if (cap.capabilities & V4L2_CAP_READWRITE)
+    else if (caps & V4L2_CAP_READWRITE)
     {
         sys->blocksize = fmt.fmt.pix.sizeimage;
         sys->bufv = NULL;
-        access->pf_read = AccessReadStream;
+        access->pf_block = ReadBlock;
     }
     else
     {
-        msg_Err (access, "no supported I/O method");
+        msg_Err (access, "no supported capture method");
         return -1;
     }
+
     return 0;
 }
 
@@ -212,18 +193,35 @@ void AccessClose( vlc_object_t *obj )
     free( sys );
 }
 
-static block_t *AccessRead( access_t *access )
+/* Wait for data */
+static int AccessPoll (access_t *access)
+{
+    access_sys_t *sys = access->p_sys;
+    struct pollfd ufd;
+
+    ufd.fd = sys->fd;
+    ufd.events = POLLIN;
+
+    switch (poll (&ufd, 1, 500))
+    {
+        case -1:
+            if (errno == EINTR)
+        case 0:
+            /* FIXME: kill this case (arbitrary timeout) */
+                return -1;
+            msg_Err (access, "poll error: %m");
+            access->info.b_eof = true;
+            return -1;
+    }
+    return 0;
+}
+
+
+static block_t *MMapBlock (access_t *access)
 {
     access_sys_t *sys = access->p_sys;
 
-    struct pollfd fd;
-    fd.fd = sys->fd;
-    fd.events = POLLIN;
-    fd.revents = 0;
-
-    /* Wait for data */
-    /* FIXME: kill timeout */
-    if( poll( &fd, 1, 500 ) <= 0 )
+    if (AccessPoll (access))
         return NULL;
 
     block_t *block = GrabVideo (VLC_OBJECT(access), sys->fd, sys->bufv);
@@ -235,42 +233,29 @@ static block_t *AccessRead( access_t *access )
     return block;
 }
 
-static ssize_t AccessReadStream( access_t *access, uint8_t *buf, size_t len )
+static block_t *ReadBlock (access_t *access)
 {
     access_sys_t *sys = access->p_sys;
-    struct pollfd ufd;
-    int i_ret;
 
-    ufd.fd = sys->fd;
-    ufd.events = POLLIN;
+    if (AccessPoll (access))
+        return NULL;
 
-    if( access->info.b_eof )
-        return 0;
+    block_t *block = block_Alloc (sys->blocksize);
+    if (unlikely(block == NULL))
+        return NULL;
 
-    /* FIXME: kill timeout and vlc_object_alive() */
-    do
+    ssize_t val = v4l2_read (sys->fd, block->p_buffer, block->i_buffer);
+    if (val < 0)
     {
-        if( !vlc_object_alive(access) )
-            return 0;
-
-        ufd.revents = 0;
-    }
-    while( ( i_ret = poll( &ufd, 1, 500 ) ) == 0 );
-
-    if( i_ret < 0 )
-    {
-        if( errno != EINTR )
-            msg_Err( access, "poll error: %m" );
-        return -1;
-    }
-
-    i_ret = v4l2_read (sys->fd, buf, len);
-    if( i_ret == 0 )
+        block_Release (block);
+        msg_Err (access, "cannot read buffer: %m");
         access->info.b_eof = true;
-    else if( i_ret > 0 )
-        access->info.i_pos += i_ret;
+        return NULL;
+    }
 
-    return i_ret;
+    block->i_buffer = val;
+    access->info.i_pos += val;
+    return block;
 }
 
 static int AccessControl( access_t *access, int query, va_list args )

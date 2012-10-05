@@ -2689,7 +2689,7 @@ msgstr "Preferované rozlíšenie videa"
 msgid ""
 "When several video formats are available, select one whose resolution is "
 "closest to (but not higher than) this setting, in number of lines. Use this "
-"option if you don't have enough CPU power or network bandwith to play higher "
+"option if you don't have enough CPU power or network bandwidth to play higher "
 "resolutions."
 msgstr ""
 "Ak je dostupných viacero formátov videa, vyberte to rozlíšenie, ktoré je "
@@ -31042,15 +31042,6 @@ msgstr "&Zaradiť"
 #, fuzzy
 #~ msgid "Automate picture coding mode"
 #~ msgstr "Režim kódovania obrázkov"
-
-#, fuzzy
-#~ msgid ""
-#~ "This is the relative default size of the fonts that will be rendered on "
-#~ "the video. If absolute font size is set, relative size will be overriden."
-#~ msgstr ""
-#~ "Toto je relatívna predvolená veľkosť písma, ktoré sa zobrazí na videu. Ak "
-#~ "je nastavená absolútna veľkosť písma, na relatívnu veľkosť program "
-#~ "neberie ohľad."
 
 #, fuzzy
 #~ msgid ""

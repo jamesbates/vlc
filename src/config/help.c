@@ -34,7 +34,7 @@
 #include "config/configuration.h"
 #include "libvlc.h"
 
-#if defined( WIN32 ) && !defined( UNDER_CE )
+#if defined( WIN32 )
 static void ShowConsole (void);
 static void PauseConsole (void);
 #else
@@ -167,20 +167,20 @@ static void Help (vlc_object_t *p_this, char const *psz_help_name)
 
     if( psz_help_name && !strcmp( psz_help_name, "help" ) )
     {
-        utf8_fprintf( stdout, vlc_usage, "vlc" );
+        utf8_fprintf( stdout, _(vlc_usage), "vlc" );
         Usage( p_this, "=help" );
         Usage( p_this, "=main" );
         print_help_on_full_help();
     }
     else if( psz_help_name && !strcmp( psz_help_name, "longhelp" ) )
     {
-        utf8_fprintf( stdout, vlc_usage, "vlc" );
+        utf8_fprintf( stdout, _(vlc_usage), "vlc" );
         Usage( p_this, NULL );
         print_help_on_full_help();
     }
     else if( psz_help_name && !strcmp( psz_help_name, "full-help" ) )
     {
-        utf8_fprintf( stdout, vlc_usage, "vlc" );
+        utf8_fprintf( stdout, _(vlc_usage), "vlc" );
         Usage( p_this, NULL );
     }
     else if( psz_help_name )
@@ -293,9 +293,8 @@ static void Usage (vlc_object_t *p_this, char const *psz_search)
     }
 
     /* List all modules */
-    module_t **list = module_list_get (NULL);
-    if (!list)
-        return;
+    size_t count;
+    module_t **list = module_list_get (&count);
 
     /* Ugly hack to make sure that the help options always come first
      * (part 1) */
@@ -303,14 +302,14 @@ static void Usage (vlc_object_t *p_this, char const *psz_search)
         Usage( p_this, "help" );
 
     /* Enumerate the config for each module */
-    for (size_t i = 0; list[i]; i++)
+    for (size_t i = 0; i < count; i++)
     {
-        bool b_help_module;
         module_t *p_parser = list[i];
         module_config_t *p_item = NULL;
         module_config_t *p_section = NULL;
         module_config_t *p_end = p_parser->p_config + p_parser->confsize;
         const char *objname = module_get_object (p_parser);
+        bool b_help_module;
 
         if( psz_search &&
             ( b_strict ? strcmp( objname, psz_search )
@@ -448,15 +447,15 @@ static void Usage (vlc_object_t *p_this, char const *psz_search)
                 psz_type = _("string");
                 psz_ket = ">";
 
-                if( p_item->ppsz_list )
+                if( p_item->list_count )
                 {
                     psz_bra = OPTION_VALUE_SEP "{";
                     psz_type = psz_buffer;
                     psz_buffer[0] = '\0';
-                    for( i = 0; p_item->ppsz_list[i]; i++ )
+                    for( i = 0; i < p_item->list_count; i++ )
                     {
                         if( i ) strcat( psz_buffer, "," );
-                        strcat( psz_buffer, p_item->ppsz_list[i] );
+                        strcat( psz_buffer, p_item->list.psz[i] );
                     }
                     psz_ket = "}";
                 }
@@ -476,17 +475,17 @@ static void Usage (vlc_object_t *p_this, char const *psz_search)
                     psz_type = psz_buffer;
                 }
 
-                if( p_item->i_list )
+                if( p_item->list_count )
                 {
                     psz_bra = OPTION_VALUE_SEP "{";
                     psz_type = psz_buffer;
                     psz_buffer[0] = '\0';
-                    for( i = 0; p_item->ppsz_list_text[i]; i++ )
+                    for( i = 0; i < p_item->list_count; i++ )
                     {
                         if( i ) strcat( psz_buffer, ", " );
                         sprintf( psz_buffer + strlen(psz_buffer), "%i (%s)",
-                                 p_item->pi_list[i],
-                                 module_gettext( p_parser, p_item->ppsz_list_text[i] ) );
+                                 p_item->list.i[i],
+                                 module_gettext( p_parser, p_item->list_text[i] ) );
                     }
                     psz_ket = "}";
                 }
@@ -722,8 +721,6 @@ static void Usage (vlc_object_t *p_this, char const *psz_search)
  *****************************************************************************/
 static void ListModules (vlc_object_t *p_this, bool b_verbose)
 {
-    module_t *p_parser;
-
     bool b_color = var_InheritBool( p_this, "color" );
 
     ShowConsole();
@@ -735,11 +732,13 @@ static void ListModules (vlc_object_t *p_this, bool b_verbose)
 #endif
 
     /* List all modules */
-    module_t **list = module_list_get (NULL);
+    size_t count;
+    module_t **list = module_list_get (&count);
 
     /* Enumerate each module */
-    for (size_t j = 0; (p_parser = list[j]) != NULL; j++)
+    for (size_t j = 0; j < count; j++)
     {
+        module_t *p_parser = list[j];
         const char *objname = module_get_object (p_parser);
         if( b_color )
             utf8_fprintf( stdout, GREEN"  %-22s "WHITE"%s\n"GRAY, objname,
@@ -797,7 +796,7 @@ static void Version( void )
     PauseConsole();
 }
 
-#if defined (WIN32) && !defined (UNDER_CE)
+#if defined (WIN32)
 /*****************************************************************************
  * ShowConsole: On Win32, create an output console for debug messages
  *****************************************************************************
@@ -862,7 +861,7 @@ static int ConsoleWidth( void )
             i_width = 80;
         pclose( file );
     }
-#elif !defined (UNDER_CE)
+#else
     CONSOLE_SCREEN_BUFFER_INFO buf;
 
     if (GetConsoleScreenBufferInfo (GetStdHandle (STD_OUTPUT_HANDLE), &buf))

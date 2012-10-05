@@ -54,9 +54,6 @@ typedef struct intf_thread_t
     struct intf_thread_t *p_next; /** LibVLC interfaces book keeping */
     vlc_thread_t thread; /** LibVLC thread */
     /* Thread properties and locks */
-#if defined( __APPLE__ )
-    bool          b_should_run_on_first_thread;
-#endif
 
     /* Specific interfaces */
     intf_sys_t *        p_sys;                          /** system interface */
@@ -129,7 +126,7 @@ VLC_API void vlc_Unsubscribe(msg_subscription_t *);
 
 /*@}*/
 
-#if defined( WIN32 ) && !defined( UNDER_CE )
+#if defined( WIN32 )
 #    define CONSOLE_INTRO_MSG \
          if( !getenv( "PWD" ) ) /* detect Cygwin shell or Wine */ \
          { \
@@ -185,17 +182,20 @@ typedef enum vlc_dialog {
 /* Useful text messages shared by interfaces */
 #define INTF_ABOUT_MSG LICENSE_MSG
 
-#define EXTENSIONS_AUDIO_CSV "3ga", "669", "a52", "aac", "ac3", "ape", "awb", "dts", "flac", "it", \
-                         "m4a", "m4p", "mka", "mlp", "mod", "mp1", "mp2", "mp3", "mpc", "mpga", \
-                         "oga", "ogg", "oma", "qcp", "ra", "rmi", "s3m", "spx", "thd", "tta", \
-                         "wav", "wma", "wv", "xm"
+#define EXTENSIONS_AUDIO_CSV "3ga", "669", "a52", "aac", "ac3", "adt", "adts", "aif", "aifc", "aiff", \
+                         "amr", "aob". "ape", "awb", "caf", "dts", "flac", "it", \
+                         "m4a", "m4p", "m5p", "mka", "mlp", "mod", "mpa", "mp1", "mp2", "mp3", "mpc", "mpga", \
+                         "oga", "ogg", "oma", "opus", "qcp", "ra", "rmi", "s3m", "spx", "thd", "tta", \
+                         "voc", "vqf", "w64", "wav", "wma", "wv", "xa", "xm"
 
-#define EXTENSIONS_VIDEO_CSV "asf", "avi", "divx", "drc", "dv", "f4v", "flv", "gvi", "gxf", "iso", \
+#define EXTENSIONS_VIDEO_CSV "3g2", "3gp", "3gp2", "3gpp", "amv", "asf", "avi", "divx", "drc", "dv", \
+                             "f4v", "flv", "gvi", "gxf", "iso", \
                              "m1v", "m2v", "m2t", "m2ts", "m4v", "mkv", "mov",\
-                             "mp2", "mp4", "mpeg", "mpeg1", \
-                             "mpeg2", "mpeg4", "mpg", "mts", "mtv", "mxf", "mxg", "nuv", \
+                             "mp2", "mp2v", "mp4", "mp4v", "mpe", "mpeg", "mpeg1", \
+                             "mpeg2", "mpeg4", "mpg", "mpv2", "mts", "mtv", "mxf", "mxg", "nsv", "nuv", \
                              "ogg", "ogm", "ogv", "ogx", "ps", \
-                             "rec", "rm", "rmvb", "ts", "vob", "wm", "wmv"
+                             "rec", "rm", "rmvb", "tod", "ts", "tts", "vob", "vro", \
+                             "webm", "wm", "wmv", "wtv", "xesc"
 
 #define EXTENSIONS_AUDIO \
     "*.3ga;" \
@@ -213,16 +213,17 @@ typedef enum vlc_dialog {
     "*.ape;" \
     "*.awb;" \
     "*.caf;" \
-    "*.cda;" \
     "*.dts;" \
     "*.flac;"\
     "*.it;"  \
     "*.m4a;" \
     "*.m4p;" \
+    "*.m5p;" \
     "*.mid;" \
     "*.mka;" \
     "*.mlp;" \
     "*.mod;" \
+    "*.mpa;" \
     "*.mp1;" \
     "*.mp2;" \
     "*.mp3;" \
@@ -231,6 +232,7 @@ typedef enum vlc_dialog {
     "*.oga;" \
     "*.ogg;" \
     "*.oma;" \
+    "*.opus;" \
     "*.qcp;" \
     "*.ra;" \
     "*.rmi;" \
@@ -247,11 +249,11 @@ typedef enum vlc_dialog {
     "*.xa;"  \
     "*.xm"
 
-#define EXTENSIONS_VIDEO "*.3g2;*.3gp;*.3gp2;*.3gpp;*.amv;*.asf;*.avi;*.bin;*.divx;*.drc;*.dv;*f4v;*.flv;*.gvi;*.gxf;*.iso;*.m1v;*.m2v;" \
-                         "*.m2t;*.m2ts;*.m4v;*.mkv;*.mov;*.mp2;*.mp2v;*.mp4;*.mp4v;*.mpa;*.mpe;*.mpeg;*.mpeg1;" \
+#define EXTENSIONS_VIDEO "*.3g2;*.3gp;*.3gp2;*.3gpp;*.amv;*.asf;*.avi;*.bin;*.divx;*.drc;*.dv;*f4v;*.flv;*.gvi;*.gvi;*.gxf;*.iso;*.m1v;*.m2v;" \
+                         "*.m2t;*.m2ts;*.m4v;*.mkv;*.mov;*.mp2;*.mp2v;*.mp4;*.mp4v;*.mpe;*.mpeg;*.mpeg1;" \
                          "*.mpeg2;*.mpeg4;*.mpg;*.mpv2;*.mts;*.mtv;*.mxf;*.mxg;*.nsv;*.nuv;" \
                          "*.ogg;*.ogm;*.ogv;*.ogx;*.ps;" \
-                         "*.rec;*.rm;*.rmvb;*.tod;*.ts;*.tts;*.vob;*.vro;*.webm;*.wm;*.wmv"
+                         "*.rec;*.rm;*.rmvb;*.tod;*.ts;*.tts;*.vob;*.vro;*.webm;*.wm;*.wmv;*.wtv;*.xesc"
 
 #define EXTENSIONS_PLAYLIST "*.asx;*.b4s;*.cue;*.ifo;*.m3u;*.m3u8;*.pls;*.ram;*.rar;*.sdp;*.vlc;*.xspf;*.wvx;*.zip;*.conf"
 
@@ -263,7 +265,7 @@ typedef enum vlc_dialog {
                             "*.ssa;*.aqt;" \
                             "*.jss;*.psb;" \
                             "*.rt;*.smi;*.txt;" \
-                            "*.smil;*.stl;*.usf" \
+                            "*.smil;*.stl;*.usf;" \
                             "*.dks;*.pjs;*.mpl2"
 
 /** \defgroup vlc_interaction Interaction

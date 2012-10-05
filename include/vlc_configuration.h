@@ -32,6 +32,8 @@
  * It includes functions allowing to declare, get or set configuration options.
  */
 
+#include <sys/types.h>  /* for ssize_t */
+
 # ifdef __cplusplus
 extern "C" {
 # endif
@@ -50,39 +52,47 @@ typedef union
     float       f;
 } module_value_t;
 
+typedef int (*vlc_string_list_cb)(vlc_object_t *, const char *,
+                                  char ***, char ***);
+typedef int (*vlc_integer_list_cb)(vlc_object_t *, const char *,
+                                   int64_t **, char ***);
+
 struct module_config_t
 {
-    char        *psz_type;                          /* Configuration subtype */
-    char        *psz_name;                                    /* Option name */
-    char        *psz_text;      /* Short comment on the configuration option */
-    char        *psz_longtext;   /* Long comment on the configuration option */
+    union
+    {
+        struct
+        {
+            uint8_t     i_type;                        /* Configuration type */
+            char        i_short;               /* Optional short option name */
+            unsigned    b_advanced:1;                     /* Advanced option */
+            unsigned    b_internal:1;          /* Hidden from prefs and help */
+            unsigned    b_unsaveable:1;       /* Not stored in configuration */
+            unsigned    b_safe:1;       /* Safe in web plugins and playlists */
+            unsigned    b_removed:1;                           /* Deprecated */
+        };
+        uint32_t flags;
+    };
+    char *psz_type;                                 /* Configuration subtype */
+    char *psz_name;                                           /* Option name */
+    char *psz_text;             /* Short comment on the configuration option */
+    char *psz_longtext;          /* Long comment on the configuration option */
+
     module_value_t value;                                    /* Option value */
     module_value_t orig;
     module_value_t min;
     module_value_t max;
 
     /* Values list */
-    char **      ppsz_list;       /* List of possible values for the option */
-    int         *pi_list;                              /* Idem for integers */
-    char       **ppsz_list_text;          /* Friendly names for list values */
-    int          i_list;                               /* Options list size */
-    vlc_callback_t pf_update_list; /* Callback to initialize dropdown lists */
-    uint8_t      i_type;                              /* Configuration type */
-    char         i_short;                     /* Optional short option name */
-
-    /* Misc */
-    unsigned    b_advanced:1;        /* Flag to indicate an advanced option */
-    unsigned    b_internal:1; /* Flag to indicate option is not to be shown */
-    unsigned    b_unsaveable:1;               /* Config should not be saved */
-    unsigned    b_safe:1;       /* Safe to use in web plugins and playlists */
-
-    /* Actions list */
-    int            i_action;                           /* actions list size */
-    vlc_callback_t *ppf_action;    /* List of possible actions for a config */
-    char          **ppsz_action_text;         /* Friendly names for actions */
-
-    /* Deprecated */
-    bool        b_removed;
+    uint16_t list_count;                                /* Options list size */
+    union
+    {
+        char **psz;               /* List of possible values for the option */
+        int   *i;
+        vlc_string_list_cb psz_cb;
+        vlc_integer_list_cb i_cb;
+    } list;
+    char **list_text;                      /* Friendly names for list values */
 };
 
 /*****************************************************************************
@@ -96,6 +106,10 @@ VLC_API float config_GetFloat(vlc_object_t *, const char *) VLC_USED;
 VLC_API void config_PutFloat(vlc_object_t *, const char *, float);
 VLC_API char * config_GetPsz(vlc_object_t *, const char *) VLC_USED VLC_MALLOC;
 VLC_API void config_PutPsz(vlc_object_t *, const char *, const char *);
+VLC_API ssize_t config_GetIntChoices(vlc_object_t *, const char *,
+                                     int64_t **, char ***) VLC_USED;
+VLC_API ssize_t config_GetPszChoices(vlc_object_t *, const char *,
+                                     char ***, char ***) VLC_USED;
 
 VLC_API int config_SaveConfigFile( vlc_object_t * );
 #define config_SaveConfigFile(a) config_SaveConfigFile(VLC_OBJECT(a))
@@ -106,7 +120,6 @@ VLC_API void config_ResetAll( vlc_object_t * );
 VLC_API module_config_t * config_FindConfig( vlc_object_t *, const char * ) VLC_USED;
 VLC_API char * config_GetDataDir(void) VLC_USED VLC_MALLOC;
 VLC_API char *config_GetLibDir(void) VLC_USED;
-VLC_API const char * config_GetConfDir( void ) VLC_USED;
 
 typedef enum vlc_userdir
 {

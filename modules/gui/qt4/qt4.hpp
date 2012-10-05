@@ -1,5 +1,5 @@
 /*****************************************************************************
- * qt4.hpp : QT4 interface
+ * qt4.hpp : Qt interface
  ****************************************************************************
  * Copyright (C) 2006-2009 the VideoLAN team
  * $Id$
@@ -43,10 +43,10 @@
 #define HAS_QT47 ( QT_VERSION >= 0x040700 )
 
 enum {
-    DialogEventType = 0,
-    IMEventType     = 100,
-    PLEventType     = 200,
-    MsgEventType    = 300,
+    DialogEventTypeOffset = 0,
+    IMEventTypeOffset     = 100,
+    PLEventTypeOffset     = 200,
+    MsgEventTypeOffset    = 300,
 };
 
 enum{
@@ -76,7 +76,7 @@ struct intf_sys_t
     QString filepath;        /* Last path used in dialogs */
 
     int  i_screenHeight;     /* Detection of Small screens */
-
+    unsigned voutWindowType; /* Type of vout_window_t provided */
     bool b_isDialogProvider; /* Qt mode or Skins mode */
 #ifdef WIN32
     bool disable_volume_keys;

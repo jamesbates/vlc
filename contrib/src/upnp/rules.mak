@@ -21,6 +21,7 @@ ifdef HAVE_WIN32
 	$(APPLY) $(SRC)/upnp/libupnp-win32.patch
 	$(APPLY) $(SRC)/upnp/libupnp-win64.patch
 endif
+	$(APPLY) $(SRC)/upnp/libupnp-ipv6.patch
 	$(UPDATE_AUTOCONFIG) && cd $(UNPACK_DIR) && mv config.guess config.sub build-aux/
 	$(MOVE)
 
@@ -28,6 +29,6 @@ endif
 ifdef HAVE_WIN32
 	$(RECONF)
 endif
-	cd $< && $(HOSTVARS) CFLAGS="$(CFLAGS) -O3 -DUPNP_STATIC_LIB $(LIBUPNP_ECFLAGS)" ./configure --disable-samples --without-documentation --disable-webserver $(HOSTCONF)
+	cd $< && $(HOSTVARS) CFLAGS="$(CFLAGS) -DUPNP_STATIC_LIB $(LIBUPNP_ECFLAGS)" ./configure --disable-samples --without-documentation --enable-ipv6 $(HOSTCONF)
 	cd $< && $(MAKE) install
 	touch $@

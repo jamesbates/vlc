@@ -21,9 +21,6 @@
  * Inc., 51 Franklin Street, Fifth Floor, Boston MA 02110-1301, USA.
  *****************************************************************************/
 
-/*****************************************************************************
- * Preamble
- *****************************************************************************/
 #ifdef HAVE_CONFIG_H
 # include "config.h"
 #endif
@@ -39,6 +36,41 @@
 #include "libvlc.h"
 #include "aout_internal.h"
 
+/**
+ * Supply or update the current custom ("hardware") volume.
+ * @note This only makes sense after calling aout_VolumeHardInit().
+ * @param volume current custom volume
+ *
+ * @warning The caller (i.e. the audio output plug-in) is responsible for
+ * interlocking and synchronizing call to this function and to the
+ * audio_output_t.pf_volume_set callback. This ensures that VLC gets correct
+ * volume information (possibly with a latency).
+ */
+static void aout_OutputVolumeReport (audio_output_t *aout, float volume)
+{
+    var_SetFloat (aout, "volume", volume);
+}
+
+static void aout_OutputMuteReport (audio_output_t *aout, bool mute)
+{
+    var_SetBool (aout, "mute", mute);
+}
+
+static void aout_OutputPolicyReport (audio_output_t *aout, bool cork)
+{
+    (cork ? var_IncInteger : var_DecInteger) (aout->p_parent, "corks");
+}
+
+static int aout_OutputGainRequest (audio_output_t *aout, float gain)
+{
+    aout_owner_t *owner = aout_owner (aout);
+
+    aout_assert_locked (aout);
+    aout_volume_SetVolume (owner->volume, gain);
+    /* XXX: ideally, return -1 if format cannot be amplified */
+    return 0;
+}
+
 /*****************************************************************************
  * aout_OutputNew : allocate a new output and rework the filter pipeline
  *****************************************************************************
@@ -51,8 +83,12 @@ int aout_OutputNew( audio_output_t *p_aout,
 
     aout_assert_locked( p_aout );
     p_aout->format = *p_format;
-
     aout_FormatPrepare( &p_aout->format );
+
+    p_aout->event.volume_report = aout_OutputVolumeReport;
+    p_aout->event.mute_report = aout_OutputMuteReport;
+    p_aout->event.policy_report = aout_OutputPolicyReport;
+    p_aout->event.gain_request = aout_OutputGainRequest;
 
     /* Find the best output plug-in. */
     owner->module = module_need (p_aout, "audio output", "$aout", false);
@@ -62,98 +98,70 @@ int aout_OutputNew( audio_output_t *p_aout,
         return -1;
     }
 
-    if ( var_Type( p_aout, "audio-channels" ) ==
-             (VLC_VAR_INTEGER | VLC_VAR_HASCHOICE) )
+    if (!var_Type (p_aout, "stereo-mode"))
+        var_Create (p_aout, "stereo-mode",
+                    VLC_VAR_INTEGER | VLC_VAR_HASCHOICE | VLC_VAR_DOINHERIT);
+
+    /* The user may have selected a different channels configuration. */
+    var_AddCallback (p_aout, "stereo-mode", aout_ChannelsRestart, NULL);
+    switch (var_GetInteger (p_aout, "stereo-mode"))
     {
-        /* The user may have selected a different channels configuration. */
-        switch( var_InheritInteger( p_aout, "audio-channels" ) )
+        case AOUT_VAR_CHAN_RSTEREO:
+            p_aout->format.i_original_channels |= AOUT_CHAN_REVERSESTEREO;
+             break;
+        case AOUT_VAR_CHAN_STEREO:
+            p_aout->format.i_original_channels = AOUT_CHANS_STEREO;
+            break;
+        case AOUT_VAR_CHAN_LEFT:
+            p_aout->format.i_original_channels = AOUT_CHAN_LEFT;
+            break;
+        case AOUT_VAR_CHAN_RIGHT:
+            p_aout->format.i_original_channels = AOUT_CHAN_RIGHT;
+            break;
+        case AOUT_VAR_CHAN_DOLBYS:
+            p_aout->format.i_original_channels =
+                                     AOUT_CHANS_STEREO | AOUT_CHAN_DOLBYSTEREO;
+            break;
+        default:
         {
-            case AOUT_VAR_CHAN_RSTEREO:
-                p_aout->format.i_original_channels |= AOUT_CHAN_REVERSESTEREO;
-                break;
-            case AOUT_VAR_CHAN_STEREO:
-                p_aout->format.i_original_channels =
-                                              AOUT_CHAN_LEFT | AOUT_CHAN_RIGHT;
-                break;
-            case AOUT_VAR_CHAN_LEFT:
+            if ((p_aout->format.i_original_channels & AOUT_CHAN_PHYSMASK)
+                                                         != AOUT_CHANS_STEREO)
+                 break;
+
+            vlc_value_t val, txt;
+            val.i_int = 0;
+            var_Change (p_aout, "stereo-mode", VLC_VAR_DELCHOICE, &val, NULL);
+            txt.psz_string = _("Stereo audio mode");
+            var_Change (p_aout, "stereo-mode", VLC_VAR_SETTEXT, &txt, NULL);
+            if (p_aout->format.i_original_channels & AOUT_CHAN_DOLBYSTEREO)
+            {
+                val.i_int = AOUT_VAR_CHAN_DOLBYS;
+                txt.psz_string = _("Dolby Surround");
+            }
+            else
+            {
+                val.i_int = AOUT_VAR_CHAN_STEREO;
+                txt.psz_string = _("Stereo");
+            }
+            var_Change (p_aout, "stereo-mode", VLC_VAR_ADDCHOICE, &val, &txt);
+            var_Change (p_aout, "stereo-mode", VLC_VAR_SETVALUE, &val, NULL);
+            val.i_int = AOUT_VAR_CHAN_LEFT;
+            txt.psz_string = _("Left");
+            var_Change (p_aout, "stereo-mode", VLC_VAR_ADDCHOICE, &val, &txt);
+            if (p_aout->format.i_original_channels & AOUT_CHAN_DUALMONO)
+            {   /* Go directly to the left channel. */
                 p_aout->format.i_original_channels = AOUT_CHAN_LEFT;
-                break;
-            case AOUT_VAR_CHAN_RIGHT:
-                p_aout->format.i_original_channels = AOUT_CHAN_RIGHT;
-                break;
-            case AOUT_VAR_CHAN_DOLBYS:
-                p_aout->format.i_original_channels =
-                      AOUT_CHAN_LEFT | AOUT_CHAN_RIGHT | AOUT_CHAN_DOLBYSTEREO;
-                break;
+                var_Change (p_aout, "stereo-mode", VLC_VAR_SETVALUE, &val,
+                            NULL);
+            }
+            val.i_int = AOUT_VAR_CHAN_RIGHT;
+            txt.psz_string = _("Right");
+            var_Change (p_aout, "stereo-mode", VLC_VAR_ADDCHOICE, &val, &txt);
+            val.i_int = AOUT_VAR_CHAN_RSTEREO;
+            txt.psz_string = _("Reverse stereo");
+            var_Change (p_aout, "stereo-mode", VLC_VAR_ADDCHOICE, &val, &txt);
         }
     }
-    else if ( p_aout->format.i_physical_channels == AOUT_CHAN_CENTER
-              && (p_aout->format.i_original_channels
-                   & AOUT_CHAN_PHYSMASK) == (AOUT_CHAN_LEFT | AOUT_CHAN_RIGHT) )
-    {
-        vlc_value_t val, text;
-
-        /* Mono - create the audio-channels variable. */
-        var_Create( p_aout, "audio-channels",
-                    VLC_VAR_INTEGER | VLC_VAR_HASCHOICE );
-        text.psz_string = _("Audio Channels");
-        var_Change( p_aout, "audio-channels", VLC_VAR_SETTEXT, &text, NULL );
-
-        val.i_int = AOUT_VAR_CHAN_STEREO; text.psz_string = _("Stereo");
-        var_Change( p_aout, "audio-channels", VLC_VAR_ADDCHOICE, &val, &text );
-        val.i_int = AOUT_VAR_CHAN_LEFT; text.psz_string = _("Left");
-        var_Change( p_aout, "audio-channels", VLC_VAR_ADDCHOICE, &val, &text );
-        val.i_int = AOUT_VAR_CHAN_RIGHT; text.psz_string = _("Right");
-        var_Change( p_aout, "audio-channels", VLC_VAR_ADDCHOICE, &val, &text );
-        if ( p_aout->format.i_original_channels & AOUT_CHAN_DUALMONO )
-        {
-            /* Go directly to the left channel. */
-            p_aout->format.i_original_channels = AOUT_CHAN_LEFT;
-            var_SetInteger( p_aout, "audio-channels", AOUT_VAR_CHAN_LEFT );
-        }
-        var_AddCallback( p_aout, "audio-channels", aout_ChannelsRestart,
-                         NULL );
-    }
-    else if ( p_aout->format.i_physical_channels ==
-               (AOUT_CHAN_LEFT | AOUT_CHAN_RIGHT)
-                && (p_aout->format.i_original_channels &
-                     (AOUT_CHAN_LEFT | AOUT_CHAN_RIGHT)) )
-    {
-        vlc_value_t val, text;
-
-        /* Stereo - create the audio-channels variable. */
-        var_Create( p_aout, "audio-channels",
-                    VLC_VAR_INTEGER | VLC_VAR_HASCHOICE );
-        text.psz_string = _("Audio Channels");
-        var_Change( p_aout, "audio-channels", VLC_VAR_SETTEXT, &text, NULL );
-
-        if ( p_aout->format.i_original_channels & AOUT_CHAN_DOLBYSTEREO )
-        {
-            val.i_int = AOUT_VAR_CHAN_DOLBYS;
-            text.psz_string = _("Dolby Surround");
-        }
-        else
-        {
-            val.i_int = AOUT_VAR_CHAN_STEREO;
-            text.psz_string = _("Stereo");
-        }
-        var_Change( p_aout, "audio-channels", VLC_VAR_ADDCHOICE, &val, &text );
-        val.i_int = AOUT_VAR_CHAN_LEFT; text.psz_string = _("Left");
-        var_Change( p_aout, "audio-channels", VLC_VAR_ADDCHOICE, &val, &text );
-        val.i_int = AOUT_VAR_CHAN_RIGHT; text.psz_string = _("Right");
-        var_Change( p_aout, "audio-channels", VLC_VAR_ADDCHOICE, &val, &text );
-        val.i_int = AOUT_VAR_CHAN_RSTEREO; text.psz_string=_("Reverse stereo");
-        var_Change( p_aout, "audio-channels", VLC_VAR_ADDCHOICE, &val, &text );
-        if ( p_aout->format.i_original_channels & AOUT_CHAN_DUALMONO )
-        {
-            /* Go directly to the left channel. */
-            p_aout->format.i_original_channels = AOUT_CHAN_LEFT;
-            var_SetInteger( p_aout, "audio-channels", AOUT_VAR_CHAN_LEFT );
-        }
-        var_AddCallback( p_aout, "audio-channels", aout_ChannelsRestart,
-                         NULL );
-    }
-    var_TriggerCallback( p_aout, "intf-change" );
 
     aout_FormatPrepare( &p_aout->format );
     aout_FormatPrint( p_aout, "output", &p_aout->format );
@@ -167,11 +175,6 @@ int aout_OutputNew( audio_output_t *p_aout,
      * so lets always use that when hardware supports floating point. */
     if( HAVE_FPU )
         owner->mixer_format.i_format = VLC_CODEC_FL32;
-    else
-    /* Otherwise, audio filters will not work. Use fixed-point if the input has
-     * more than 16-bits depth. */
-    if( p_format->i_bitspersample > 16 || !AOUT_FMT_LINEAR(p_format))
-        owner->mixer_format.i_format = VLC_CODEC_FI32;
     else
     /* Fallback to 16-bits. This avoids pointless conversion to and from
      * 32-bits samples for the sole purpose of software mixing. */
@@ -206,12 +209,10 @@ void aout_OutputDelete (audio_output_t *aout)
     if (owner->module == NULL)
         return;
 
+    var_DelCallback (aout, "stereo-mode", aout_ChannelsRestart, NULL);
     module_unneed (aout, owner->module);
-    /* Clear callbacks */
-    aout->pf_play = aout_DecDeleteBuffer; /* gruik */
-    aout->pf_pause = NULL;
-    aout->pf_flush = NULL;
-    aout_VolumeNoneInit (aout);
+    aout->volume_set = NULL;
+    aout->mute_set = NULL;
     owner->module = NULL;
     aout_FiltersDestroyPipeline (owner->filters, owner->nb_filters);
 }
@@ -222,6 +223,7 @@ void aout_OutputDelete (audio_output_t *aout)
 void aout_OutputPlay (audio_output_t *aout, block_t *block)
 {
     aout_owner_t *owner = aout_owner (aout);
+    mtime_t drift = 0;
 
     aout_assert_locked (aout);
 
@@ -234,7 +236,34 @@ void aout_OutputPlay (audio_output_t *aout, block_t *block)
         return;
     }
 
-    aout->pf_play (aout, block);
+    if (likely(owner->module != NULL))
+        aout->pf_play (aout, block, &drift);
+    else
+        block_Release (block);
+/**
+ * Notifies the audio input of the drift from the requested audio
+ * playback timestamp (@ref block_t.i_pts) to the anticipated playback time
+ * as reported by the audio output hardware.
+ * Depending on the drift amplitude, the input core may ignore the drift
+ * trigger upsampling or downsampling, or even discard samples.
+ * Future VLC versions may instead adjust the input decoding speed.
+ *
+ * The audio output plugin is responsible for estimating the drift. A negative
+ * value means playback is ahead of the intended time and a positive value
+ * means playback is late from the intended time. In most cases, the audio
+ * output can estimate the delay until playback of the next sample to be
+ * queued. Then, before the block is queued:
+ *    drift = mdate() + delay - block->i_pts
+ * where mdate() + delay is the estimated time when the sample will be rendered
+ * and block->i_pts is the intended time.
+ */
+    if (drift < -AOUT_MAX_PTS_ADVANCE || +AOUT_MAX_PTS_DELAY < drift)
+    {
+        msg_Warn (aout, "not synchronized (%"PRId64" us), resampling",
+                  drift);
+        if (date_Get (&owner->sync.date) != VLC_TS_INVALID)
+            date_Move (&owner->sync.date, drift);
+    }
 }
 
 /**
@@ -261,107 +290,4 @@ void aout_OutputFlush( audio_output_t *aout, bool wait )
 
     if( aout->pf_flush != NULL )
         aout->pf_flush( aout, wait );
-}
-
-
-/*** Volume handling ***/
-
-/**
- * Dummy volume setter. This is the default volume setter.
- */
-static int aout_VolumeNoneSet (audio_output_t *aout, float volume, bool mute)
-{
-    (void)aout; (void)volume; (void)mute;
-    return -1;
-}
-
-/**
- * Configures the dummy volume setter.
- * @note Audio output plugins for which volume is irrelevant
- * should call this function during activation.
- */
-void aout_VolumeNoneInit (audio_output_t *aout)
-{
-    /* aout_New() -safely- calls this function without the lock, before any
-     * other thread knows of this audio output instance.
-    aout_assert_locked (aout); */
-    aout->pf_volume_set = aout_VolumeNoneSet;
-    var_Destroy (aout, "volume");
-    var_Destroy (aout, "mute");
-}
-
-/**
- * Volume setter for software volume.
- */
-static int aout_VolumeSoftSet (audio_output_t *aout, float volume, bool mute)
-{
-    aout_owner_t *owner = aout_owner (aout);
-
-    aout_assert_locked (aout);
-
-    /* Cubic mapping from software volume to amplification factor.
-     * This provides a good tradeoff between low and high volume ranges.
-     *
-     * This code is only used for the VLC software mixer. If you change this
-     * formula, be sure to update the aout_VolumeHardInit()-based plugins also.
-     */
-    if (!mute)
-        volume = volume * volume * volume;
-    else
-        volume = 0.;
-
-    owner->volume.multiplier = volume;
-    return 0;
-}
-
-/**
- * Configures the volume setter for software mixing
- * and apply the default volume.
- * @note Audio output plugins that cannot apply the volume
- * should call this function during activation.
- */
-void aout_VolumeSoftInit (audio_output_t *aout)
-{
-    audio_volume_t volume = var_InheritInteger (aout, "volume");
-    bool mute = var_InheritBool (aout, "mute");
-
-    aout_assert_locked (aout);
-    aout->pf_volume_set = aout_VolumeSoftSet;
-    aout_VolumeSoftSet (aout, volume / (float)AOUT_VOLUME_DEFAULT, mute);
-}
-
-/**
- * Configures a custom volume setter. This is used by audio outputs that can
- * control the hardware volume directly and/or emulate it internally.
- * @param setter volume setter callback
- */
-void aout_VolumeHardInit (audio_output_t *aout, aout_volume_cb setter)
-{
-    aout_assert_locked (aout);
-    aout->pf_volume_set = setter;
-    var_Create (aout, "volume", VLC_VAR_INTEGER|VLC_VAR_DOINHERIT);
-    var_Create (aout, "mute", VLC_VAR_BOOL|VLC_VAR_DOINHERIT);
-}
-
-/**
- * Supply or update the current custom ("hardware") volume.
- * @note This only makes sense after calling aout_VolumeHardInit().
- * @param setter volume setter callback
- * @param volume current custom volume
- * @param mute current mute flag
- *
- * @warning The caller (i.e. the audio output plug-in) is responsible for
- * interlocking and synchronizing call to this function and to the
- * audio_output_t.pf_volume_set callback. This ensures that VLC gets correct
- * volume information (possibly with a latency).
- */
-void aout_VolumeHardSet (audio_output_t *aout, float volume, bool mute)
-{
-    audio_volume_t vol = lroundf (volume * (float)AOUT_VOLUME_DEFAULT);
-
-    /* We cannot acquire the volume lock as this gets called from the audio
-     * output plug-in (it would cause a lock inversion). */
-    var_SetInteger (aout, "volume", vol);
-    var_SetBool (aout, "mute", mute);
-    var_TriggerCallback (aout, "intf-change");
 }

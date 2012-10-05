@@ -7,19 +7,19 @@
  * Authors: Christopher Mueller <christopher.mueller@itec.uni-klu.ac.at>
  *          Christian Timmerer  <christian.timmerer@itec.uni-klu.ac.at>
  *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU Lesser General Public License as published
+ * This program is free software; you can redistribute it and/or modify it
+ * under the terms of the GNU Lesser General Public License as published
  * by the Free Software Foundation; either version 2.1 of the License, or
  * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ * GNU Lesser General Public License for more details.
  *
  * You should have received a copy of the GNU Lesser General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston MA 02110-1301, USA.
+ * along with this program; if not, write to the Free Software Foundation,
+ * Inc., 51 Franklin Street, Fifth Floor, Boston MA 02110-1301, USA.
  *****************************************************************************/
 
 #ifndef REPRESENTATION_H_
@@ -37,7 +37,7 @@ namespace dash
 {
     namespace mpd
     {
-        class Group;
+        class AdaptationSet;
 
         class Representation : public CommonAttributesElements
         {
@@ -69,8 +69,8 @@ namespace dash
 
                 void                setSegmentInfo( SegmentInfo *info );
                 void                setTrickMode( TrickModeType *trickModeType );
-                const Group*        getParentGroup() const;
-                void                setParentGroup( const Group *group );
+                const AdaptationSet*        getParentGroup() const;
+                void                setParentGroup( const AdaptationSet *group );
 
                 SegmentList*        getSegmentList          () const;
                 void                setSegmentList          (SegmentList *list);
@@ -88,7 +88,7 @@ namespace dash
                 std::list<const Representation*>    dependencies;
                 SegmentInfo                         *segmentInfo;
                 TrickModeType                       *trickModeType;
-                const Group                         *parentGroup;
+                const AdaptationSet                         *parentGroup;
                 SegmentBase                         *segmentBase;
                 SegmentList                         *segmentList;
                 int                                 width;

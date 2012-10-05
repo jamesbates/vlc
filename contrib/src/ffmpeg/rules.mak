@@ -11,7 +11,6 @@ FFMPEGCONF = \
 	--enable-libgsm \
 	--enable-libopenjpeg \
 	--disable-debug \
-	--enable-gpl \
 	--disable-avdevice \
 	--disable-devices \
 	--disable-avfilter \
@@ -34,8 +33,8 @@ endif
 ifdef ENABLE_SMALL
 FFMPEGCONF += --enable-small --optflags=-O2
 ifeq ($(ARCH),arm)
-ifdef HAVE_NEON
-# XXX: assumes CPU >= cortex-a8, and thus thumb2 able
+ifdef HAVE_ARMV7A
+# XXX: assumes > ARMv7-A, and thus thumb2-able
 FFMPEGCONF += --enable-thumb
 endif
 endif
@@ -55,11 +54,16 @@ endif
 
 # ARM stuff
 ifeq ($(ARCH),arm)
-FFMPEGCONF += --disable-runtime-cpudetect --arch=arm
+FFMPEGCONF += --arch=arm
 ifdef HAVE_NEON
 FFMPEGCONF += --cpu=cortex-a8 --enable-neon
-FFMPEG_CFLAGS +=-mfloat-abi=softfp -mfpu=neon
+FFMPEG_CFLAGS += -mfpu=neon
 endif
+endif
+
+# x86 stuff
+ifeq ($(ARCH),i386)
+FFMPEGCONF += --arch=x86
 endif
 
 # Darwin
@@ -75,14 +79,22 @@ endif
 endif
 ifdef HAVE_IOS
 FFMPEGCONF += --enable-pic --as="$(AS)" --disable-decoder=snow
-ifeq ($(ARCH), arm)
-FFMPEGCONF += --cpu=cortex-a8
-endif
 endif
 
 # Linux
 ifdef HAVE_LINUX
 FFMPEGCONF += --target-os=linux --enable-pic
+
+ifeq ($(ANDROID_ABI), x86)
+ifdef HAVE_ANDROID
+# Android-x86 gcc doesn't guarantee an aligned stack, but this is
+# handled by __attribute__((force_align_arg_pointer)) in libavcodec
+# already, so we tell gcc to assume this alignment, so we don't need
+# to waste a precious register in assembly functions to realign it.
+FFMPEG_CFLAGS += -mincoming-stack-boundary=4
+endif # HAVE_ANDROID
+endif # x86
+
 endif
 
 # Windows
@@ -103,13 +115,6 @@ FFMPEGCONF+= --cpu=i686 --arch=x86
 endif
 else
 FFMPEGCONF += --enable-pthreads
-endif
-
-ifdef HAVE_WINCE
-FFMPEGCONF += --target-os=mingw32ce --arch=armv4l --cpu=armv4t \
-	--disable-decoder=snow --disable-decoder=vc9 \
-	--disable-decoder=wmv3 --disable-decoder=vorbis \
-	--disable-decoder=dvdsub --disable-decoder=dvbsub
 endif
 
 FFMPEG_CFLAGS += --std=gnu99

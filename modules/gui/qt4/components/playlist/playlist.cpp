@@ -69,7 +69,7 @@ PlaylistWidget::PlaylistWidget( intf_thread_t *_p_i, QWidget *_par )
     /* Create a Container for the Art Label
        in order to have a beautiful resizing for the selector above it */
     artContainer = new QStackedWidget;
-    artContainer->setMaximumHeight( 128 );
+    artContainer->setMaximumHeight( 256 );
 
     /* Art label */
     CoverArtLabel *art = new CoverArtLabel( artContainer, p_intf );
@@ -78,6 +78,8 @@ PlaylistWidget::PlaylistWidget( intf_thread_t *_p_i, QWidget *_par )
 
     CONNECT( THEMIM->getIM(), artChanged( QString ),
              art, showArtUpdate( const QString& ) );
+    CONNECT( THEMIM->getIM(), artChanged( input_item_t * ),
+             art, showArtUpdate( input_item_t * ) );
 
     leftSplitter->addWidget( artContainer );
 
@@ -118,29 +120,7 @@ PlaylistWidget::PlaylistWidget( intf_thread_t *_p_i, QWidget *_par )
     viewButton->setToolTip( qtr("Change playlistview") );
     topbarLayout->addWidget( viewButton );
 
-    /* View selection menu */
-    QSignalMapper *viewSelectionMapper = new QSignalMapper( this );
-    CONNECT( viewSelectionMapper, mapped( int ), mainView, showView( int ) );
-
-    QActionGroup *actionGroup = new QActionGroup( this );
-
-#ifndef NDEBUG
-# define MAX_VIEW StandardPLPanel::VIEW_COUNT
-#else
-# define MAX_VIEW StandardPLPanel::VIEW_COUNT - 1
-#endif
-    for( int i = 0; i < MAX_VIEW; i++ )
-    {
-        viewActions[i] = actionGroup->addAction( viewNames[i] );
-        viewActions[i]->setCheckable( true );
-        viewSelectionMapper->setMapping( viewActions[i], i );
-        CONNECT( viewActions[i], triggered(), viewSelectionMapper, map() );
-    }
-    viewActions[mainView->currentViewIndex()]->setChecked( true );
-
-    QMenu *viewMenu = new QMenu( viewButton );
-    viewMenu->addActions( actionGroup->actions() );
-    viewButton->setMenu( viewMenu );
+    viewButton->setMenu( StandardPLPanel::viewSelectionMenu( mainView ));
     CONNECT( viewButton, clicked(), mainView, cycleViews() );
 
     /* Search */
@@ -281,17 +261,7 @@ void LocationBar::setIndex( const QModelIndex &index )
 
     while( true )
     {
-        PLItem *item = model->getItem( i );
-        QString text;
-
-        char *fb_name = input_item_GetTitle( item->inputItem() );
-        if( EMPTY_STR( fb_name ) )
-        {
-            free( fb_name );
-            fb_name = input_item_GetName( item->inputItem() );
-        }
-        text = qfu(fb_name);
-        free(fb_name);
+        QString text = model->getTitle( i );
 
         QAbstractButton *btn = new LocationButton( text, first, !first, this );
         btn->setSizePolicy( QSizePolicy::Maximum, QSizePolicy::Fixed );
@@ -301,7 +271,7 @@ void LocationBar::setIndex( const QModelIndex &index )
         actions.append( action );
         CONNECT( btn, clicked(), action, trigger() );
 
-        mapper->setMapping( action, item->id() );
+        mapper->setMapping( action, model->itemId( i ) );
         CONNECT( action, triggered(), mapper, map() );
 
         first = false;

@@ -43,121 +43,10 @@
 //#define Nothing here, this is just to prevent update-po from being stupid
 #include "vlc_keys.h"
 #include "vlc_meta.h"
-
-#if defined (WIN32) || defined (__APPLE__)
-static const char *const ppsz_language[] =
-{
-    "auto",
-    "en",
-    "ar",
-    "bn",
-    "pt_BR",
-    "en_GB",
-    "el",
-    "bg",
-    "ca",
-    "zh_TW",
-    "cs",
-    "da",
-    "nl",
-    "fi",
-    "fr",
-    "gl",
-    "ka",
-    "de",
-    "he",
-    "hr",
-    "hu",
-    "hy",
-    "id",
-    "it",
-    "ja",
-    "ko",
-    "lt",
-    "mn",
-    "ms",
-    "nn",
-    "kk",
-    "km",
-    "oc",
-    "fa",
-    "pl",
-    "pt_PT",
-    "pa",
-    "ro",
-    "ru",
-    "zh_CN",
-    "si",
-    "sr",
-    "sk",
-    "sl",
-    "ckb",
-    "es",
-    "sv",
-    "tr",
-    "uk",
-    "vi",
-    "wa",
-};
-
-static const char *const ppsz_language_text[] =
-{
-    N_("Auto"),
-    "American English",
-    "ﻉﺮﺒﻳ",
-    "বাংলা",
-    "Português Brasileiro",
-    "British English",
-    "Νέα Ελληνικά",
-    "български език",
-    "Català",
-    "正體中文",
-    "Čeština",
-    "Dansk",
-    "Nederlands",
-    "Suomi",
-    "Français",
-    "Galego",
-    "ქართული",
-    "Deutsch",
-    "עברית",
-    "hrvatski",
-    "Magyar",
-    "հայերեն",
-    "Bahasa Indonesia",
-    "Italiano",
-    "日本語",
-    "한국어",
-    "lietuvių",
-    "Монгол хэл",
-    "Melayu",
-    "Nynorsk",
-    "Қазақ тілі",
-    "ភាសាខ្មែរ",
-    "Occitan",
-    "ﻑﺍﺮﺳی",
-    "Polski",
-    "Português",
-    "ਪੰਜਾਬੀ",
-    "Română",
-    "Русский",
-    "简体中文",
-    "සිංහල",
-    "српски",
-    "Slovensky",
-    "slovenščina",
-    "کوردیی سۆرانی",
-    "Español",
-    "Svenska",
-    "Türkçe",
-    "украї́нська мо́ва",
-    "tiếng Việt",
-    "Walon",
-};
-#endif
+#include <vlc_aout.h>
 
 static const char *const ppsz_snap_formats[] =
-{ "png", "jpg" };
+{ "png", "jpg", "tiff" };
 
 /*****************************************************************************
  * Configuration options for the main program. Each module will also separatly
@@ -216,11 +105,6 @@ static const char *const ppsz_snap_formats[] =
 #define OPEN_LONGTEXT N_( \
     "This stream will always be opened at VLC startup." )
 
-#define LANGUAGE_TEXT N_("Language")
-#define LANGUAGE_LONGTEXT N_( "You can manually select a language for the " \
-    "interface. The system language is auto-detected if \"auto\" is " \
-    "specified here." )
-
 #define COLOR_TEXT N_("Color messages")
 #define COLOR_LONGTEXT N_( \
     "This enables colorization of the messages sent to the console " \
@@ -266,15 +150,13 @@ static const char *const ppsz_snap_formats[] =
 #define MONO_LONGTEXT N_("This will force a mono audio output.")
 #endif
 
-#define VOLUME_TEXT N_("Default audio volume")
-#define VOLUME_LONGTEXT N_( \
-    "You can set the default audio output volume here, in a range from 0 to " \
-    "1024.")
+#define GAIN_TEXT N_("Audio gain")
+#define GAIN_LONGTEXT N_( \
+    "This linear gain will be applied to outputted audio.")
 
 #define VOLUME_STEP_TEXT N_("Audio output volume step")
 #define VOLUME_STEP_LONGTEXT N_( \
-    "The step size of the volume is adjustable using this option, " \
-    "in a range from 0 to 1024." )
+    "The step size of the volume is adjustable using this option.")
 #define AOUT_VOLUME_STEP 32
 
 #define VOLUME_SAVE_TEXT N_( "Remember the audio volume" )
@@ -321,13 +203,22 @@ static const int pi_force_dolby_values[] = { 0, 1, 2 };
 static const char *const ppsz_force_dolby_descriptions[] = {
     N_("Auto"), N_("On"), N_("Off") };
 
+#define STEREO_MODE_TEXT N_("Stereo audio output mode")
+static const int pi_stereo_mode_values[] = { AOUT_VAR_CHAN_UNSET,
+    AOUT_VAR_CHAN_STEREO, AOUT_VAR_CHAN_RSTEREO,
+    AOUT_VAR_CHAN_LEFT, AOUT_VAR_CHAN_RIGHT, AOUT_VAR_CHAN_DOLBYS
+};
+static const char *const ppsz_stereo_mode_texts[] = { N_("Unset"),
+    N_("Stereo"), N_("Reverse stereo"),
+    N_("Left"), N_("Right"), N_("Dolby Surround")
+};
 
 #define AUDIO_FILTER_TEXT N_("Audio filters")
 #define AUDIO_FILTER_LONGTEXT N_( \
     "This adds audio post processing filters, to modify " \
     "the sound rendering." )
 
-#define AUDIO_VISUAL_TEXT N_("Audio visualizations ")
+#define AUDIO_VISUAL_TEXT N_("Audio visualizations")
 #define AUDIO_VISUAL_LONGTEXT N_( \
     "This adds visualization modules (spectrum analyzer, etc.).")
 
@@ -742,7 +633,7 @@ static const char *const ppsz_clock_descriptions[] =
     "When several video formats are available, select one whose " \
     "resolution is closest to (but not higher than) this setting, " \
     "in number of lines. Use this option if you don't have enough CPU " \
-    "power or network bandwith to play higher resolutions.")
+    "power or network bandwidth to play higher resolutions.")
 static const int pi_prefres[] = { -1, 1080, 720, 576, 360, 240 };
 static const char *const ppsz_prefres[] = {
     N_("Best available"), N_("Full HD (1080p)"), N_("HD (720p)"),
@@ -1082,7 +973,7 @@ static const char *const ppsz_prefres[] = {
 #define SOUT_MUX_CACHING_TEXT N_("Stream output muxer caching (ms)")
 #define SOUT_MUX_CACHING_LONGTEXT N_( \
     "This allow you to configure the initial caching amount for stream output " \
-    " muxer. This value should be set in milliseconds." )
+    "muxer. This value should be set in milliseconds." )
 
 #define PACKETIZER_TEXT N_("Preferred packetizer list")
 #define PACKETIZER_LONGTEXT N_( \
@@ -1303,6 +1194,11 @@ static const char *const ppsz_albumart_descriptions[] =
 #define AUTOSTART_LONGTEXT N_( "Automatically start playing the playlist " \
                 "content once it's loaded." )
 
+#define CORK_TEXT N_("Pause on audio communication")
+#define CORK_LONGTEXT N_( \
+    "If pending audio communication is detected, playback will be paused " \
+    "automatically." )
+
 #define ML_TEXT N_("Use media library")
 #define ML_LONGTEXT N_( \
     "The media library is automatically saved and reloaded each time you " \
@@ -1479,6 +1375,8 @@ static const char *const ppsz_albumart_descriptions[] =
 #define AUDIO_TRACK_KEY_LONGTEXT N_("Cycle through the available audio tracks(languages).")
 #define SUBTITLE_TRACK_KEY_TEXT N_("Cycle subtitle track")
 #define SUBTITLE_TRACK_KEY_LONGTEXT N_("Cycle through the available subtitle tracks.")
+#define PROGRAM_SID_KEY_TEXT N_("Cycle program Service ID")
+#define PROGRAM_SID_KEY_LONGTEXT N_("Cycle through the available program Service IDs (SIDs).")
 #define ASPECT_RATIO_KEY_TEXT N_("Cycle source aspect ratio")
 #define ASPECT_RATIO_KEY_LONGTEXT N_("Cycle through a predefined list of source aspect ratios.")
 #define CROP_KEY_TEXT N_("Cycle video crop")
@@ -1489,8 +1387,10 @@ static const char *const ppsz_albumart_descriptions[] =
 #define SCALE_UP_KEY_LONGTEXT N_("Increase scale factor.")
 #define SCALE_DOWN_KEY_TEXT N_("Decrease scale factor")
 #define SCALE_DOWN_KEY_LONGTEXT N_("Decrease scale factor.")
-#define DEINTERLACE_KEY_TEXT N_("Cycle deinterlace modes")
-#define DEINTERLACE_KEY_LONGTEXT N_("Cycle through deinterlace modes.")
+#define DEINTERLACE_KEY_TEXT N_("Toggle deinterlacing")
+#define DEINTERLACE_KEY_LONGTEXT N_("Activate or deactivate deinterlacing.")
+#define DEINTERLACE_MODE_KEY_TEXT N_("Cycle deinterlace modes")
+#define DEINTERLACE_MODE_KEY_LONGTEXT N_("Cycle through available deinterlace modes.")
 #define INTF_TOGGLE_FSC_KEY_TEXT N_("Show controller in fullscreen")
 #define INTF_SHOW_KEY_TEXT N_("Show interface")
 #define INTF_SHOW_KEY_LONGTEXT N_("Raise the interface above all other windows.")
@@ -1589,12 +1489,12 @@ vlc_module_begin ()
 
     add_bool( "audio", 1, AUDIO_TEXT, AUDIO_LONGTEXT, false )
         change_safe ()
-    add_integer_with_range( "volume", AOUT_VOLUME_DEFAULT, 0,
-                            AOUT_VOLUME_MAX, VOLUME_TEXT,
-                            VOLUME_LONGTEXT, false )
-    add_integer_with_range( "volume-step", AOUT_VOLUME_STEP, 0,
-                            AOUT_VOLUME_MAX, VOLUME_STEP_TEXT,
-                            VOLUME_STEP_LONGTEXT, true )
+    add_float( "gain", 1., GAIN_TEXT, GAIN_LONGTEXT, true )
+        change_float_range( 0., 8. )
+    add_obsolete_integer( "volume" ) /* since 2.1.0 */
+    add_integer( "volume-step", AOUT_VOLUME_STEP, VOLUME_STEP_TEXT,
+                 VOLUME_STEP_LONGTEXT, true )
+        change_integer_range( 1, AOUT_VOLUME_DEFAULT )
     add_bool( "volume-save", true, VOLUME_SAVE_TEXT, VOLUME_SAVE_TEXT, true )
     add_obsolete_integer( "aout-rate" ) /* since 2.0.0 */
 #if HAVE_FPU && !defined( __APPLE__ )
@@ -1605,6 +1505,8 @@ vlc_module_begin ()
     add_integer( "force-dolby-surround", 0, FORCE_DOLBY_TEXT,
                  FORCE_DOLBY_LONGTEXT, false )
         change_integer_list( pi_force_dolby_values, ppsz_force_dolby_descriptions )
+    add_integer( "stereo-mode", 0, STEREO_MODE_TEXT, STEREO_MODE_TEXT, true )
+        change_integer_list( pi_stereo_mode_values, ppsz_stereo_mode_texts )
     add_integer( "audio-desync", 0, DESYNC_TEXT,
                  DESYNC_LONGTEXT, true )
         change_safe ()
@@ -1615,7 +1517,7 @@ vlc_module_begin ()
     /* FIXME TODO create a subcat replay gain ? */
     add_string( "audio-replay-gain-mode", ppsz_replay_gain_mode[0], AUDIO_REPLAY_GAIN_MODE_TEXT,
                 AUDIO_REPLAY_GAIN_MODE_LONGTEXT, false )
-        change_string_list( ppsz_replay_gain_mode, ppsz_replay_gain_mode_text, 0 )
+        change_string_list( ppsz_replay_gain_mode, ppsz_replay_gain_mode_text )
     add_float( "audio-replay-gain-preamp", 0.0,
                AUDIO_REPLAY_GAIN_PREAMP_TEXT, AUDIO_REPLAY_GAIN_PREAMP_LONGTEXT, false )
     add_float( "audio-replay-gain-default", -7.0,
@@ -1703,7 +1605,7 @@ vlc_module_begin ()
                    SNAP_PREFIX_LONGTEXT, false )
     add_string( "snapshot-format", "png", SNAP_FORMAT_TEXT,
                    SNAP_FORMAT_LONGTEXT, false )
-        change_string_list( ppsz_snap_formats, NULL, 0 )
+        change_string_list( ppsz_snap_formats, ppsz_snap_formats )
     add_bool( "snapshot-preview", true, SNAP_PREVIEW_TEXT,
               SNAP_PREVIEW_LONGTEXT, false )
     add_bool( "snapshot-sequential", false, SNAP_SEQUENTIAL_TEXT,
@@ -1751,7 +1653,7 @@ vlc_module_begin ()
         change_safe()
     add_string( "deinterlace-mode", "blend",
                 DEINTERLACE_MODE_TEXT, DEINTERLACE_MODE_LONGTEXT, false )
-        change_string_list( ppsz_deinterlace_mode, ppsz_deinterlace_mode_text, 0 )
+        change_string_list( ppsz_deinterlace_mode, ppsz_deinterlace_mode_text )
         change_safe()
 
     set_subcategory( SUBCAT_VIDEO_VOUT )
@@ -1761,8 +1663,8 @@ vlc_module_begin ()
     set_subcategory( SUBCAT_VIDEO_VFILTER )
     add_module_list_cat( "video-filter", SUBCAT_VIDEO_VFILTER, NULL,
                 VIDEO_FILTER_TEXT, VIDEO_FILTER_LONGTEXT, false )
-    add_module_list_cat( "video-splitter", SUBCAT_VIDEO_VFILTER, NULL,
-                        VIDEO_SPLITTER_TEXT, VIDEO_SPLITTER_LONGTEXT, false )
+    add_module_list( "video-splitter", "video splitter", NULL,
+                     VIDEO_SPLITTER_TEXT, VIDEO_SPLITTER_LONGTEXT, false )
     add_obsolete_string( "vout-filter" ) /* since 2.0.0 */
 #if 0
     add_string( "pixel-ratio", "1", PIXEL_RATIO_TEXT, PIXEL_RATIO_TEXT )
@@ -1797,10 +1699,10 @@ vlc_module_begin ()
     add_integer( "sub-margin", 0, SUB_MARGIN_TEXT,
                  SUB_MARGIN_LONGTEXT, true )
     set_section( N_( "Overlays" ) , NULL )
-    add_module_list_cat( "sub-source", SUBCAT_VIDEO_SUBPIC, NULL,
-                SUB_SOURCE_TEXT, SUB_SOURCE_LONGTEXT, false )
-    add_module_list_cat( "sub-filter", SUBCAT_VIDEO_SUBPIC, NULL,
-                SUB_FILTER_TEXT, SUB_FILTER_LONGTEXT, false )
+    add_module_list( "sub-source", "sub source", NULL,
+                     SUB_SOURCE_TEXT, SUB_SOURCE_LONGTEXT, false )
+    add_module_list( "sub-filter", "sub filter", NULL,
+                     SUB_FILTER_TEXT, SUB_FILTER_LONGTEXT, false )
 
 /* Input options */
     set_category( CAT_INPUT )
@@ -1956,7 +1858,6 @@ vlc_module_begin ()
     add_obsolete_integer( "linsys-hdsdi-caching" ) /* 2.0.0 */
     add_obsolete_integer( "linsys-sdi-caching" ) /* 2.0.0 */
     add_obsolete_integer( "oss-caching" ) /* 2.0.0 */
-    add_obsolete_integer( "pvr-caching" ) /* 2.0.0 */
     add_obsolete_integer( "screen-caching" ) /* 2.0.0 */
     add_obsolete_integer( "v4l2-caching" ) /* 2.0.0 */
     add_integer( "disc-caching", DEFAULT_PTS_DELAY / 1000,
@@ -2027,8 +1928,8 @@ vlc_module_begin ()
     add_obsolete_bool( "prefer-system-codecs" )
 
     set_subcategory( SUBCAT_INPUT_STREAM_FILTER )
-    add_module_list_cat( "stream-filter", SUBCAT_INPUT_STREAM_FILTER, NULL,
-                STREAM_FILTER_TEXT, STREAM_FILTER_LONGTEXT, false )
+    add_module_list( "stream-filter", "stream_filter", NULL,
+                     STREAM_FILTER_TEXT, STREAM_FILTER_LONGTEXT, false )
 
 
 /* Stream output options */
@@ -2129,22 +2030,15 @@ vlc_module_begin ()
               INHIBIT_LONGTEXT, true )
 #endif
 
-#if defined(WIN32) || defined(HAVE_DBUS)
-    add_bool( "one-instance", 0, ONEINSTANCE_TEXT,
-              ONEINSTANCE_LONGTEXT, true )
-    add_bool( "started-from-file", 0, STARTEDFROMFILE_TEXT,
-              STARTEDFROMFILE_LONGTEXT, true )
-        change_volatile ()
-    add_bool( "one-instance-when-started-from-file", 1,
-              ONEINSTANCEWHENSTARTEDFROMFILE_TEXT,
-              ONEINSTANCEWHENSTARTEDFROMFILE_LONGTEXT, true )
-    add_bool( "playlist-enqueue", 0, PLAYLISTENQUEUE_TEXT,
-              PLAYLISTENQUEUE_LONGTEXT, true )
-#endif
-
 #if defined(WIN32) || defined(__OS2__)
     add_bool( "high-priority", 0, HPRIORITY_TEXT,
               HPRIORITY_LONGTEXT, false )
+#endif
+
+#define CLOCK_SOURCE_TEXT N_("Clock source")
+#ifdef WIN32
+    add_string( "clock-source", NULL, CLOCK_SOURCE_TEXT, CLOCK_SOURCE_TEXT, true )
+        change_string_cb( EnumClockSource )
 #endif
 
 /* Playlist options */
@@ -2167,6 +2061,19 @@ vlc_module_begin ()
         change_safe()
     add_bool( "playlist-autostart", true,
               AUTOSTART_TEXT, AUTOSTART_LONGTEXT, false )
+    add_bool( "playlist-cork", true, CORK_TEXT, CORK_LONGTEXT, false )
+#if defined(WIN32) || defined(HAVE_DBUS)
+    add_bool( "one-instance", 0, ONEINSTANCE_TEXT,
+              ONEINSTANCE_LONGTEXT, true )
+    add_bool( "started-from-file", 0, STARTEDFROMFILE_TEXT,
+              STARTEDFROMFILE_LONGTEXT, true )
+        change_volatile ()
+    add_bool( "one-instance-when-started-from-file", 1,
+              ONEINSTANCEWHENSTARTEDFROMFILE_TEXT,
+              ONEINSTANCEWHENSTARTEDFROMFILE_LONGTEXT, true )
+    add_bool( "playlist-enqueue", 0, PLAYLISTENQUEUE_TEXT,
+              PLAYLISTENQUEUE_LONGTEXT, true )
+#endif
     add_bool( "media-library", 0, ML_TEXT, ML_LONGTEXT, false )
 #if defined( MEDIA_LIBRARY )
     add_bool( "load-media-library-on-startup", 1, LOAD_ML_TEXT,
@@ -2215,9 +2122,7 @@ vlc_module_begin ()
 #endif
 
 #if defined (WIN32) || defined (__APPLE__)
-    add_string( "language", "auto", LANGUAGE_TEXT, LANGUAGE_LONGTEXT,
-                false )
-        change_string_list( ppsz_language, ppsz_language_text, 0 )
+    add_obsolete_string( "language" ) /* since 2.1.0 */
 #endif
 
     add_bool( "color", true, COLOR_TEXT, COLOR_LONGTEXT, true )
@@ -2317,12 +2222,14 @@ vlc_module_begin ()
 #   define KEY_AUDIODELAY_DOWN    "f"
 #   define KEY_AUDIO_TRACK        "l"
 #   define KEY_SUBTITLE_TRACK     "s"
+#   define KEY_PROGRAM_SID        "x"
 #   define KEY_ASPECT_RATIO       "a"
 #   define KEY_CROP               "c"
 #   define KEY_TOGGLE_AUTOSCALE   "o"
 #   define KEY_SCALE_UP           "Alt+o"
 #   define KEY_SCALE_DOWN         "Shift+Alt+o"
 #   define KEY_DEINTERLACE        "d"
+#   define KEY_DEINTERLACE_MODE   "Shift+d"
 #   define KEY_INTF_TOGGLE_FSC    "i"
 #   define KEY_INTF_BOSS          NULL
 #   define KEY_DISC_MENU          "Ctrl+m"
@@ -2393,17 +2300,17 @@ vlc_module_begin ()
      */
 #   define KEY_TOGGLE_FULLSCREEN  "f"
 #   define KEY_LEAVE_FULLSCREEN   "Esc"
-#   define KEY_PLAY_PAUSE         "Space"
-#   define KEY_PAUSE              NULL
-#   define KEY_PLAY               NULL
+#   define KEY_PLAY_PAUSE         "Space\tMedia Play Pause"
+#   define KEY_PAUSE              "Browser Stop"
+#   define KEY_PLAY               "Browser Refresh"
 #   define KEY_FASTER             "+"
 #   define KEY_SLOWER             "-"
 #   define KEY_RATE_NORMAL        "="
 #   define KEY_RATE_FASTER_FINE   "]"
 #   define KEY_RATE_SLOWER_FINE   "["
-#   define KEY_NEXT               "n"
-#   define KEY_PREV               "p"
-#   define KEY_STOP               "s"
+#   define KEY_NEXT               "n\tMedia Next Track"
+#   define KEY_PREV               "p\tMedia Prev Track"
+#   define KEY_STOP               "s\tMedia Stop"
 #   define KEY_POSITION           "t"
 #   define KEY_JUMP_MEXTRASHORT   "Shift+Left"
 #   define KEY_JUMP_PEXTRASHORT   "Shift+Right"
@@ -2413,16 +2320,16 @@ vlc_module_begin ()
 #   define KEY_JUMP_PMEDIUM       "Ctrl+Right"
 #   define KEY_JUMP_MLONG         "Ctrl+Alt+Left"
 #   define KEY_JUMP_PLONG         "Ctrl+Alt+Right"
-#   define KEY_FRAME_NEXT         "e"
+#   define KEY_FRAME_NEXT         "e\tBrowser Next"
 #   define KEY_NAV_ACTIVATE       "Enter"
 #   define KEY_NAV_UP             "Up"
 #   define KEY_NAV_DOWN           "Down"
 #   define KEY_NAV_LEFT           "Left"
 #   define KEY_NAV_RIGHT          "Right"
 #   define KEY_QUIT               "Ctrl+q"
-#   define KEY_VOL_UP             "Ctrl+Up"
-#   define KEY_VOL_DOWN           "Ctrl+Down"
-#   define KEY_VOL_MUTE           "m"
+#   define KEY_VOL_UP             "Ctrl+Up\tVolume Up"
+#   define KEY_VOL_DOWN           "Ctrl+Down\tVolume Down"
+#   define KEY_VOL_MUTE           "m\tVolume Mute"
 #   define KEY_SUBDELAY_UP        "h"
 #   define KEY_SUBDELAY_DOWN      "g"
 #   define KEY_SUBPOS_DOWN        NULL
@@ -2434,12 +2341,14 @@ vlc_module_begin ()
 
 #   define KEY_AUDIO_TRACK        "b"
 #   define KEY_SUBTITLE_TRACK     "v"
+#   define KEY_PROGRAM_SID        "x"
 #   define KEY_ASPECT_RATIO       "a"
 #   define KEY_CROP               "c"
 #   define KEY_TOGGLE_AUTOSCALE   "o"
 #   define KEY_SCALE_UP           "Alt+o"
 #   define KEY_SCALE_DOWN         "Alt+Shift+o"
 #   define KEY_DEINTERLACE        "d"
+#   define KEY_DEINTERLACE_MODE   "Shift+d"
 #   define KEY_INTF_TOGGLE_FSC    "i"
 #   define KEY_INTF_BOSS          NULL
 #   define KEY_DISC_MENU          "Shift+m"
@@ -2598,6 +2507,8 @@ vlc_module_begin ()
              AUDI_DEVICE_CYCLE_KEY_LONGTEXT, false )
     add_key( "key-subtitle-track", KEY_SUBTITLE_TRACK,
              SUBTITLE_TRACK_KEY_TEXT, SUBTITLE_TRACK_KEY_LONGTEXT, false )
+    add_key( "key-program-sid", KEY_PROGRAM_SID,
+             PROGRAM_SID_KEY_TEXT, PROGRAM_SID_KEY_LONGTEXT, false )
     add_key( "key-aspect-ratio", KEY_ASPECT_RATIO,
              ASPECT_RATIO_KEY_TEXT, ASPECT_RATIO_KEY_LONGTEXT, false )
     add_key( "key-crop", KEY_CROP,
@@ -2610,6 +2521,8 @@ vlc_module_begin ()
              SCALE_DOWN_KEY_TEXT, SCALE_DOWN_KEY_LONGTEXT, false )
     add_key( "key-deinterlace", KEY_DEINTERLACE,
              DEINTERLACE_KEY_TEXT, DEINTERLACE_KEY_LONGTEXT, false )
+    add_key( "key-deinterlace-mode", KEY_DEINTERLACE_MODE,
+             DEINTERLACE_MODE_KEY_TEXT, DEINTERLACE_MODE_KEY_LONGTEXT, false )
     add_key( "key-intf-show", KEY_INTF_TOGGLE_FSC,
              INTF_TOGGLE_FSC_KEY_TEXT, INTF_TOGGLE_FSC_KEY_TEXT, false )
     add_obsolete_inner( "key-intf-hide", CONFIG_ITEM_KEY )

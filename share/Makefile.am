@@ -4,9 +4,7 @@ EXTRA_DIST =
 
 appdatadir = $(datadir)/applications
 if !HAVE_WIN32
-if !HAVE_WINCE
 appdata_DATA = vlc.desktop
-endif
 endif
 EXTRA_DIST += vlc.desktop.in
 CLEANFILES += $(appdata_DATA)
@@ -24,7 +22,6 @@ icons128dir = $(iconsdatadir)/128x128/apps
 icons256dir = $(iconsdatadir)/256x256/apps
 
 if !HAVE_WIN32
-if !HAVE_WINCE
 dist_vlcdata_DATA = icons/vlc.ico
 dist_icons16_DATA = icons/16x16/vlc.png icons/16x16/vlc.xpm
 dist_icons32_DATA = icons/32x32/vlc.png icons/32x32/vlc.xpm \
@@ -39,18 +36,14 @@ nobase_dist_vlcdata_SCRIPTS = \
 	utils/video-vlc-default.sh \
 	$(NULL)
 endif
-endif
 
 EXTRA_DIST += \
 	$(skins2_default_vlt_FILES) \
-	$(DIST_rsrc) \
 	$(DIST_skins2) \
 	$(DIST_icons) \
 	$(DIST_http_lua) \
-	$(DIST_lua) \
 	osdmenu/default.cfg.in \
 	$(DIST_osdmenu_default) \
-	$(DIST_maemo) \
 	$(DIST_solid)
 CLEANFILES += osdmenu/default.cfg
 
@@ -64,9 +57,6 @@ nobase_vlcdata_DATA += \
 	osdmenu/default.cfg \
 	$(DIST_osdmenu_default)
 endif
-if BUILD_HILDON
-nobase_vlcdata_DATA += $(DIST_maemo) $(maemo_FILES)
-endif
 if KDE_SOLID
 soliddata_DATA = $(DIST_solid)
 endif
@@ -75,13 +65,7 @@ osdmenu/default.cfg: osdmenu/default.cfg.in $(top_builddir)/config.status
 	$(AM_V_GEN)mkdir -p osdmenu; \
 	  	   sed -e 's,\@vlcdatadir\@,$(vlcdatadir),g' < "$<" > $@
 
-DIST_rsrc = \
-	newres.h \
-	resource.h \
-	vlc_wince_rc.rc
-
 DIST_icons = \
-	vlc48x48.ico \
 	vlc512x512.png
 
 DIST_skins2 = \
@@ -209,12 +193,32 @@ nobase_vlclib_DATA = \
 	lua/sd/jamendo.luac \
 	lua/sd/metachannels.luac \
 	$(NULL)
+
+nobase_doc_DATA = \
+	lua/README.txt \
+	lua/extensions/README.txt \
+	lua/intf/README.txt \
+	lua/intf/dumpmeta.lua \
+	lua/meta/art/README.txt \
+	lua/meta/art/01_googleimage.lua \
+	lua/meta/fetcher/README.txt \
+	lua/meta/fetcher/tvrage.lua \
+	lua/meta/reader/README.txt \
+	lua/meta/reader/filename.lua \
+	lua/playlist/README.txt \
+	lua/playlist/soundcloud.lua \
+	lua/playlist/youtube.lua \
+	lua/sd/README.txt \
+	lua/sd/icecast.lua \
+	$(NULL)
+
 if BUILD_HTTPD
 nobase_vlclib_DATA += \
 	lua/intf/http.luac \
 	lua/intf/modules/httprequests.luac \
 	$(NULL)
 nobase_vlcdata_DATA += $(DIST_http_lua)
+nobase_doc_DATA += lua/http/requests/README.txt
 endif
 endif
 MOSTLYCLEANFILES += $(nobase_vlclib_DATA)
@@ -387,20 +391,6 @@ DIST_http_lua = \
 	lua/http/js/controlers.js \
 	lua/http/js/jquery-ui-1.8.13.custom.min.js \
 	lua/http/old/style.css
-
-DIST_maemo = \
-	maemo/vlc_intf.rc \
-	maemo/vlc_left_tab_active.png \
-	maemo/vlc_left_tab_passive.png \
-	maemo/playlist.png \
-	maemo/play.png \
-	maemo/pause.png \
-	maemo/stop.png \
-	maemo/previous.png \
-	maemo/next.png
-
-maemo_FILES = \
-	icons/32x32/vlc.png
 
 DIST_solid = \
 	solid/vlc-opencda.desktop \

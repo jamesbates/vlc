@@ -59,7 +59,6 @@ static filter_t * FindFilter( vlc_object_t *obj,
     p_filter->fmt_in.i_codec = infmt->i_format;
     p_filter->fmt_out.audio = *outfmt;
     p_filter->fmt_out.i_codec = outfmt->i_format;
-    p_filter->p_owner = NULL;
 
     if( infmt->i_format == outfmt->i_format
      && infmt->i_physical_channels == outfmt->i_physical_channels
@@ -92,9 +91,11 @@ static int SplitConversion( const audio_sample_format_t *restrict infmt,
 {
     *midfmt = *outfmt;
 
+    /* Lastly: resample (after format conversion and remixing) */
     if( infmt->i_rate != outfmt->i_rate )
         midfmt->i_rate = infmt->i_rate;
     else
+    /* Penultimately: remix channels (after format conversion) */
     if( infmt->i_physical_channels != outfmt->i_physical_channels
      || infmt->i_original_channels != outfmt->i_original_channels )
     {
@@ -102,22 +103,25 @@ static int SplitConversion( const audio_sample_format_t *restrict infmt,
         midfmt->i_original_channels = infmt->i_original_channels;
     }
     else
+    /* Second: convert linear to S16N as intermediate format */
+    if( AOUT_FMT_LINEAR( infmt ) )
     {
-        assert( infmt->i_format != outfmt->i_format );
-        if( AOUT_FMT_LINEAR( infmt ) )
-            /* NOTE: Use S16N as intermediate. We have all conversions to S16N,
-             * and all useful conversions from S16N. TODO: FL32 if HAVE_FPU. */
-            midfmt->i_format = VLC_CODEC_S16N;
-        else
-        if( AOUT_FMT_LINEAR( outfmt ) )
-            /* NOTE: our non-linear -> linear filters always output 32-bits */
-            midfmt->i_format = HAVE_FPU ? VLC_CODEC_FL32 : VLC_CODEC_FI32;
-        else
-            return -1; /* no indirect non-linear -> non-linear */
+        /* All conversion from linear to S16N must be supported directly. */
+        if( outfmt->i_format == VLC_CODEC_S16N )
+            return -1;
+        midfmt->i_format = VLC_CODEC_S16N;
+    }
+    else
+    /* First: convert non-linear to FI32 as intermediate format */
+    {
+        if( outfmt->i_format == VLC_CODEC_FI32 )
+            return -1;
+        midfmt->i_format = VLC_CODEC_FI32;
     }
 
+    assert( !AOUT_FMTS_IDENTICAL( infmt, midfmt ) );
     aout_FormatPrepare( midfmt );
-    return AOUT_FMTS_IDENTICAL( infmt, midfmt ) ? -1 : 0;
+    return 0;
 }
 
 #undef aout_FiltersCreatePipeline
@@ -202,7 +206,6 @@ void aout_FiltersDestroyPipeline( filter_t *const *filters, unsigned n )
         filter_t *p_filter = filters[i];
 
         module_unneed( p_filter, p_filter->p_module );
-        free( p_filter->p_owner );
         vlc_object_release( p_filter );
     }
 }

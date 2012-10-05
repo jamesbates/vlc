@@ -32,15 +32,11 @@
 
 #include <vlc_common.h>
 #include <vlc_aout.h>
-#include <vlc_aout_mixer.h>
 #include <vlc_input.h>
 #include <vlc_atomic.h>
 
 #include "aout_internal.h"
 #include "libvlc.h"
-
-static int ReplayGainCallback (vlc_object_t *, char const *,
-                               vlc_value_t, vlc_value_t, void *);
 
 /**
  * Creates an audio output
@@ -95,24 +91,14 @@ int aout_DecNew( audio_output_t *p_aout,
 
     /* Create the audio output stream */
     var_Destroy( p_aout, "audio-device" );
-    var_Destroy( p_aout, "audio-channels" );
+    var_Destroy( p_aout, "stereo-mode" );
 
     owner->input_format = *p_format;
     vlc_atomic_set (&owner->restart, 0);
+    owner->volume = aout_volume_New (p_aout, p_replay_gain);
     if( aout_OutputNew( p_aout, p_format ) < 0 )
-    {
-        ret = -1;
         goto error;
-    }
-
-    /* Allocate a software mixer */
-    assert (owner->volume.mixer == NULL);
-    owner->volume.mixer = aout_MixerNew (p_aout, owner->mixer_format.i_format);
-
-    aout_ReplayGainInit (&owner->gain.data, p_replay_gain);
-    var_AddCallback (p_aout, "audio-replay-gain-mode",
-                     ReplayGainCallback, owner);
-    var_TriggerCallback (p_aout, "audio-replay-gain-mode");
+    aout_volume_SetFormat (owner->volume, owner->mixer_format.i_format);
 
     /* Create the audio filtering "input" pipeline */
     date_Init (&owner->sync.date, owner->mixer_format.i_rate, 1);
@@ -123,15 +109,11 @@ int aout_DecNew( audio_output_t *p_aout,
                                   p_request_vout);
     if (owner->input == NULL)
     {
-        struct audio_mixer *mixer = owner->volume.mixer;
-
-        owner->volume.mixer = NULL;
         aout_OutputDelete (p_aout);
-        aout_unlock (p_aout);
-        aout_MixerDelete (mixer);
-        return -1;
-    }
 error:
+        aout_volume_Delete (owner->volume);
+        ret = -1;
+    }
     aout_unlock( p_aout );
     return ret;
 }
@@ -143,7 +125,6 @@ void aout_Shutdown (audio_output_t *p_aout)
 {
     aout_owner_t *owner = aout_owner (p_aout);
     aout_input_t *input;
-    struct audio_mixer *mixer;
 
     aout_lock( p_aout );
     /* Remove the input. */
@@ -152,19 +133,15 @@ void aout_Shutdown (audio_output_t *p_aout)
         aout_InputDelete (p_aout, input);
     owner->input = NULL;
 
-    mixer = owner->volume.mixer;
-    owner->volume.mixer = NULL;
-
-    var_DelCallback (p_aout, "audio-replay-gain-mode",
-                     ReplayGainCallback, owner);
-
-    aout_OutputDelete( p_aout );
+    if (likely(owner->module != NULL))
+    {
+        aout_OutputDelete( p_aout );
+        aout_volume_Delete (owner->volume);
+    }
     var_Destroy( p_aout, "audio-device" );
-    var_Destroy( p_aout, "audio-channels" );
+    var_Destroy( p_aout, "stereo-mode" );
 
     aout_unlock( p_aout );
-
-    aout_MixerDelete (mixer);
     free (input);
 }
 
@@ -204,14 +181,13 @@ static void aout_CheckRestart (audio_output_t *aout)
     /* Reinitializes the output */
     if (restart & AOUT_RESTART_OUTPUT)
     {
-        aout_MixerDelete (owner->volume.mixer);
-        owner->volume.mixer = NULL;
         aout_OutputDelete (aout);
-
         if (aout_OutputNew (aout, &owner->input_format))
+        {
+            aout_volume_Delete (owner->volume);
             return; /* we are officially screwed */
-        owner->volume.mixer = aout_MixerNew (aout,
-                                             owner->mixer_format.i_format);
+        }
+        aout_volume_SetFormat (owner->volume, owner->mixer_format.i_format);
     }
 
     owner->input = aout_InputNew (aout, &owner->input_format,
@@ -271,7 +247,7 @@ block_t *aout_DecNewBuffer (audio_output_t *aout, size_t samples)
 void aout_DecDeleteBuffer (audio_output_t *aout, block_t *block)
 {
     (void) aout;
-    aout_BufferFree (block);
+    block_Release (block);
 }
 
 /*****************************************************************************
@@ -296,7 +272,7 @@ int aout_DecPlay (audio_output_t *p_aout, block_t *p_buffer, int i_input_rate)
     if (unlikely(input == NULL)) /* can happen due to restart */
     {
         aout_unlock( p_aout );
-        aout_BufferFree( p_buffer );
+        block_Release( p_buffer );
         return -1;
     }
 
@@ -308,12 +284,7 @@ int aout_DecPlay (audio_output_t *p_aout, block_t *p_buffer, int i_input_rate)
         date_Increment (&owner->sync.date, p_buffer->i_nb_samples);
 
         /* Mixer */
-        if (owner->volume.mixer != NULL)
-        {
-            float amp = owner->volume.multiplier
-                      * vlc_atomic_getf (&owner->gain.multiplier);
-            aout_MixerRun (owner->volume.mixer, p_buffer, amp);
-        }
+        aout_volume_Amplify (owner->volume, p_buffer);
 
         /* Output */
         aout_OutputPlay( p_aout, p_buffer );
@@ -379,58 +350,4 @@ bool aout_DecIsEmpty (audio_output_t *aout)
         aout_OutputFlush (aout, true);
     aout_unlock (aout);
     return empty;
-}
-
-/**
- * Notifies the audio input of the drift from the requested audio
- * playback timestamp (@ref block_t.i_pts) to the anticipated playback time
- * as reported by the audio output hardware.
- * Depending on the drift amplitude, the input core may ignore the drift
- * trigger upsampling or downsampling, or even discard samples.
- * Future VLC versions may instead adjust the input decoding speed.
- *
- * The audio output plugin is responsible for estimating the ideal current
- * playback time defined as follows:
- *  ideal time = buffer timestamp - (output latency + pending buffer duration)
- *
- * Practically, this is the PTS (block_t.i_pts) of the current buffer minus
- * the latency reported by the output programming interface.
- * Computing the estimated drift directly would probably be more intuitive.
- * However the use of an absolute time value does not introduce extra
- * measurement errors due to the CPU scheduling jitter and clock resolution.
- * Furthermore, the ideal while it is an abstract value, is easy for most
- * audio output plugins to compute.
- * The following definition is equivalent but depends on the clock time:
- *  ideal time = real time + drift
-
- * @note If aout_LatencyReport() is never called, the core will assume that
- * there is no drift.
- *
- * @param ideal estimated ideal time as defined above.
- */
-void aout_TimeReport (audio_output_t *aout, mtime_t ideal)
-{
-    mtime_t delta = mdate() - ideal /* = -drift */;
-
-    aout_assert_locked (aout);
-    if (delta < -AOUT_MAX_PTS_ADVANCE || +AOUT_MAX_PTS_DELAY < delta)
-    {
-        aout_owner_t *owner = aout_owner (aout);
-
-        msg_Warn (aout, "not synchronized (%"PRId64" us), resampling",
-                  delta);
-        if (date_Get (&owner->sync.date) != VLC_TS_INVALID)
-            date_Move (&owner->sync.date, delta);
-    }
-}
-
-static int ReplayGainCallback (vlc_object_t *obj, char const *var,
-                               vlc_value_t oldval, vlc_value_t val, void *data)
-{
-    aout_owner_t *owner = data;
-    float multiplier = aout_ReplayGainSelect (obj, val.psz_string,
-                                              &owner->gain.data);
-    vlc_atomic_setf (&owner->gain.multiplier, multiplier);
-    VLC_UNUSED(var); VLC_UNUSED(oldval);
-    return VLC_SUCCESS;
 }

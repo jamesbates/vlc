@@ -49,6 +49,7 @@
 #include "extensions_manager.hpp"                 /* Extensions menu */
 #include "util/qmenuview.hpp"                     /* Simple Playlist menu */
 #include "components/playlist/playlist_model.hpp" /* PLModel getter */
+#include "components/playlist/standardpanel.hpp"  /* PLView getter */
 
 #include <QMenu>
 #include <QMenuBar>
@@ -90,7 +91,7 @@ QAction *addDPStaticEntry( QMenu *menu,
                        const char *icon,
                        const char *member,
                        const char *shortcut = NULL,
-                       QAction::MenuRole = QAction::NoRole
+                       QAction::MenuRole role = QAction::NoRole
                        )
 {
     QAction *action = NULL;
@@ -111,6 +112,11 @@ QAction *addDPStaticEntry( QMenu *menu,
         else
             action = menu->addAction( text, THEDP, member );
     }
+#ifdef __APPLE__
+    action->setMenuRole( role );
+#else
+    Q_UNUSED( role );
+#endif
     action->setData( VLCMenuBar::ACTION_STATIC );
     return action;
 }
@@ -249,7 +255,7 @@ static int AudioAutoMenuBuilder( audio_output_t *p_object,
         QVector<const char *> &varnames )
 {
     PUSH_INPUTVAR( "audio-es" );
-    PUSH_VAR( "audio-channels" );
+    PUSH_VAR( "stereo-mode" );
     PUSH_VAR( "audio-device" );
     PUSH_VAR( "visual" );
     return VLC_SUCCESS;
@@ -408,7 +414,7 @@ QMenu *VLCMenuBar::ToolsMenu( QMenu *menu )
 
 #ifdef ENABLE_VLM
     addDPStaticEntry( menu, qtr( I_MENU_VLM ), "", SLOT( vlmDialog() ),
-        "Ctrl+W" );
+        "Ctrl+Shift+W" );
 #endif
 
     addDPStaticEntry( menu, qtr( "Program Guide" ), "", SLOT( epgDialog() ),
@@ -469,6 +475,8 @@ QMenu *VLCMenuBar::ViewMenu( intf_thread_t *p_intf, QMenu *current, MainInterfac
             qtr( "Play&list" ), mi,
             SLOT( togglePlaylist() ), qtr( "Ctrl+L" ) );
 
+    if( mi->getPlaylistView() )
+        menu->addMenu( StandardPLPanel::viewSelectionMenu( mi->getPlaylistView() ) );
     menu->addSeparator();
 
     /* Minimal View */
@@ -588,7 +596,7 @@ QMenu *VLCMenuBar::AudioMenu( intf_thread_t *p_intf, QMenu * current )
     if( current->isEmpty() )
     {
         addActionWithSubmenu( current, "audio-es", qtr( "Audio &Track" ) );
-        addActionWithSubmenu( current, "audio-channels", qtr( "Audio &Channels" ) );
+        addActionWithSubmenu( current, "stereo-mode", qtr( "&Stereo Mode" ) );
         addActionWithSubmenu( current, "audio-device", qtr( "Audio &Device" ) );
         current->addSeparator();
 
@@ -882,8 +890,10 @@ void VLCMenuBar::PopupMenuControlEntries( QMenu *menu, intf_thread_t *p_intf,
     action->setIcon( QIcon( ":/toolbar/skip_back") );
 #endif
     action->setData( ACTION_STATIC );
-    addDPStaticEntry( menu, qtr( I_MENU_GOTOTIME ),"",
-                      SLOT( gotoTimeDialog() ), "Ctrl+T" );
+
+    action = menu->addAction( qtr( I_MENU_GOTOTIME ), THEDP, SLOT( gotoTimeDialog() ), qtr( "Ctrl+T" ) );
+    action->setData( ACTION_ALWAYS_ENABLED );
+
     menu->addSeparator();
 }
 
@@ -948,6 +958,7 @@ void VLCMenuBar::MiscPopupMenu( intf_thread_t *p_intf, bool show )
 {
     POPUP_BOILERPLATE
 
+    menu = new QMenu();
     if( p_input )
     {
         varnames.append( "audio-es" );
@@ -955,7 +966,6 @@ void VLCMenuBar::MiscPopupMenu( intf_thread_t *p_intf, bool show )
         menu->addSeparator();
     }
 
-    menu = new QMenu();
     Populate( p_intf, menu, varnames, objects );
 
     menu->addSeparator();

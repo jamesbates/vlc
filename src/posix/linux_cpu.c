@@ -54,61 +54,56 @@ static void vlc_CPU_init (void)
 
     while (getline (&line, &linelen, info) != -1)
     {
-        if (strncmp (line, CPU_FLAGS, strlen (CPU_FLAGS)))
-            continue;
-
         char *p = line, *cap;
         uint_fast32_t core_caps = 0;
+
+#if defined (__arm__)
+        unsigned ver;
+        if (sscanf (line, "Processor\t: ARMv%u", &ver) >= 1 && ver >= 6)
+            core_caps |= VLC_CPU_ARMv6;
+#endif
+        if (strncmp (line, CPU_FLAGS, strlen (CPU_FLAGS)))
+            continue;
 
         while ((cap = strsep (&p, " ")) != NULL)
         {
 #if defined (__arm__)
-# ifndef __ARM_NEON__
             if (!strcmp (cap, "neon"))
-                core_caps |= CPU_CAPABILITY_NEON;
-# endif
+                core_caps |= VLC_CPU_ARM_NEON;
 
 #elif defined (__i386__) || defined (__x86_64__)
-# ifndef __MMX__
             if (!strcmp (cap, "mmx"))
-                core_caps |= CPU_CAPABILITY_MMX;
-# endif
-# ifndef __SSE__
+                core_caps |= VLC_CPU_MMX;
             if (!strcmp (cap, "sse"))
-                core_caps |= CPU_CAPABILITY_SSE | CPU_CAPABILITY_MMXEXT;
+                core_caps |= VLC_CPU_SSE | VLC_CPU_MMXEXT;
             if (!strcmp (cap, "mmxext"))
-                core_caps |= CPU_CAPABILITY_MMXEXT;
-# endif
-# ifndef __SSE2__
+                core_caps |= VLC_CPU_MMXEXT;
             if (!strcmp (cap, "sse2"))
-                core_caps |= CPU_CAPABILITY_SSE2;
-# endif
-# ifndef __SSE3__
+                core_caps |= VLC_CPU_SSE2;
             if (!strcmp (cap, "pni"))
-                core_caps |= CPU_CAPABILITY_SSE3;
-# endif
-# ifndef __SSSE3__
+                core_caps |= VLC_CPU_SSE3;
             if (!strcmp (cap, "ssse3"))
-                core_caps |= CPU_CAPABILITY_SSSE3;
-# endif
-# ifndef __SSE4_1__
+                core_caps |= VLC_CPU_SSSE3;
             if (!strcmp (cap, "sse4_1"))
-                core_caps |= CPU_CAPABILITY_SSE4_1;
-# endif
-# ifndef __SSE4_2__
+                core_caps |= VLC_CPU_SSE4_1;
             if (!strcmp (cap, "sse4_2"))
-                core_caps |= CPU_CAPABILITY_SSE4_1;
-# endif
+                core_caps |= VLC_CPU_SSE4_2;
             if (!strcmp (cap, "sse4a"))
-                core_caps |= CPU_CAPABILITY_SSE4A;
-# ifndef __3dNOW__
+                core_caps |= VLC_CPU_SSE4A;
+            if (!strcmp (cap, "avx"))
+                core_caps |= VLC_CPU_AVX;
+            if (!strcmp (cap, "avx2"))
+                core_caps |= VLC_CPU_AVX2;
             if (!strcmp (cap, "3dnow"))
-                core_caps |= CPU_CAPABILITY_3DNOW;
-# endif
+                core_caps |= VLC_CPU_3dNOW;
+            if (!strcmp (cap, "xop"))
+                core_caps |= VLC_CPU_XOP;
+            if (!strcmp (cap, "fma4"))
+                core_caps |= VLC_CPU_FMA4;
 
 #elif defined (__powerpc__) || defined (__powerpc64__)
             if (!strcmp (cap, "altivec supported"))
-                core_caps |= CPU_CAPABILITY_ALTIVEC;
+                core_caps |= VLC_CPU_ALTIVEC;
 #endif
         }
 
@@ -121,39 +116,6 @@ static void vlc_CPU_init (void)
     if (all_caps == 0xFFFFFFFF) /* Error parsing of cpuinfo? */
         all_caps = 0; /* Do not assume any capability! */
 
-    /* Always enable capabilities that were forced during compilation */
-#if defined (__arm__)
-# ifdef __ARM_NEON__
-    all_caps |= CPU_CAPABILITY_NEON;
-# endif
-
-#elif defined (__i386__) || defined (__x86_64__)
-# ifdef __MMX__
-    all_caps |= CPU_CAPABILITY_MMX;
-# endif
-# ifdef __SSE__
-    all_caps |= CPU_CAPABILITY_SSE | CPU_CAPABILITY_MMXEXT;
-# endif
-# ifdef __SSE2__
-    all_caps |= CPU_CAPABILITY_SSE2;
-# endif
-# ifdef __SSE3__
-    all_caps |= CPU_CAPABILITY_SSE3;
-# endif
-# ifdef __SSSE3__
-    all_caps |= CPU_CAPABILITY_SSSE3;
-# endif
-# ifdef __SSE4_1__
-    all_caps |= CPU_CAPABILITY_SSE4_1;
-# endif
-# ifdef __SSE4_2__
-    all_caps |= CPU_CAPABILITY_SSE4_2;
-# endif
-# ifdef __3dNOW__
-    all_caps |= CPU_CAPABILITY_3DNOW;
-# endif
-
-#endif
     cpu_flags = all_caps;
 }
 

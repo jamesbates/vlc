@@ -32,6 +32,7 @@
 #include "components/playlist/playlist.hpp"
 
 #include <QWidget>
+#include <QModelIndexList>
 
 #include <vlc_playlist.h> /* playlist_item_t */
 
@@ -70,10 +71,13 @@ public:
 
     int currentViewIndex() const;
 
+    static QMenu *viewSelectionMenu(StandardPLPanel *obj);
+
 protected:
     PLModel *model;
     MLModel *mlmodel;
     virtual void wheelEvent( QWheelEvent *e );
+    bool popup( const QModelIndex & index, const QPoint &point, const QModelIndexList &selectionlist );
 
 private:
     intf_thread_t *p_intf;
@@ -84,6 +88,7 @@ private:
     PlIconView        *iconView;
     PlListView        *listView;
     PicFlowView       *picFlowView;
+    int i_zoom;
 
     QAbstractItemView *currentView;
 
@@ -98,12 +103,17 @@ private:
     void createIconView();
     void createListView();
     void createCoverView();
+    void updateZoom( int i_zoom );
     void changeModel ( bool b_ml );
     bool eventFilter ( QObject * watched, QEvent * event );
+
+    /* for popup */
+    QModelIndex popupIndex;  /* FIXME: don't store here, pass as Action param */
 
 public slots:
     void setRootItem( playlist_item_t *, bool );
     void browseInto( const QModelIndex& );
+    void showView( int );
 
 private slots:
     void deleteSelection();
@@ -120,9 +130,15 @@ private slots:
 
     void popupPlView( const QPoint & );
     void popupSelectColumn( QPoint );
+    void popupPromptAndCreateNode();
+    void popupInfoDialog();
+    void popupExplore();
+    void popupStream();
+    void popupSave();
+    void increaseZoom() { updateZoom( i_zoom + 1 ); };
+    void decreaseZoom() { updateZoom( i_zoom - 1 ); };
     void toggleColumnShown( int );
 
-    void showView( int );
     void cycleViews();
 
 signals:

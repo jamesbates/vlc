@@ -465,9 +465,10 @@ libvlc_media_player_new( libvlc_instance_t *instance )
      /* Audio */
     var_Create (mp, "aout", VLC_VAR_STRING | VLC_VAR_DOINHERIT);
     var_Create (mp, "mute", VLC_VAR_BOOL);
-    var_Create (mp, "volume", VLC_VAR_INTEGER | VLC_VAR_DOINHERIT);
+    var_Create (mp, "volume", VLC_VAR_FLOAT);
     var_Create (mp, "find-input-callback", VLC_VAR_ADDRESS);
     var_SetAddress (mp, "find-input-callback", find_input);
+    var_Create (mp, "corks", VLC_VAR_INTEGER);
     var_Create (mp, "amem-data", VLC_VAR_ADDRESS);
     var_Create (mp, "amem-setup", VLC_VAR_ADDRESS);
     var_Create (mp, "amem-cleanup", VLC_VAR_ADDRESS);
@@ -1295,7 +1296,7 @@ void libvlc_media_player_navigate( libvlc_media_player_t* p_mi,
 {
     input_thread_t *p_input_thread;
 
-    if ( navigate > libvlc_navigate_to_action_size)
+    if ( navigate >= libvlc_navigate_to_action_size)
       return;
 
     p_input_thread = libvlc_get_input_thread ( p_mi );

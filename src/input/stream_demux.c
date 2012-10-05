@@ -44,9 +44,15 @@ struct stream_sys_t
     /* Demuxer */
     char        *psz_name;
     es_out_t    *out;
-    demux_t     *p_demux;
 
     vlc_thread_t thread;
+    vlc_mutex_t  lock;
+    struct
+    {
+        double  position;
+        int64_t length;
+        int64_t time;
+    } stats;
 };
 
 static int  DStreamRead   ( stream_t *, void *p_read, unsigned int i_read );
@@ -82,9 +88,11 @@ stream_t *stream_DemuxNew( demux_t *p_demux, const char *psz_demux, es_out_t *ou
 
     p_sys->i_pos = 0;
     p_sys->out = out;
-    p_sys->p_demux = NULL;
     p_sys->p_block = NULL;
     p_sys->psz_name = strdup( psz_demux );
+    p_sys->stats.position = 0.;
+    p_sys->stats.length = 0;
+    p_sys->stats.time = 0;
 
     /* decoder fifo */
     if( ( p_sys->p_fifo = block_FifoNew() ) == NULL )
@@ -95,8 +103,12 @@ stream_t *stream_DemuxNew( demux_t *p_demux, const char *psz_demux, es_out_t *ou
         return NULL;
     }
 
+    vlc_mutex_init( &p_sys->lock );
+
     if( vlc_clone( &p_sys->thread, DStreamThread, s, VLC_THREAD_PRIORITY_INPUT ) )
     {
+        vlc_mutex_destroy( &p_sys->lock );
+        block_FifoRelease( p_sys->p_fifo );
         stream_CommonDelete( s );
         free( p_sys->psz_name );
         free( p_sys );
@@ -112,21 +124,44 @@ void stream_DemuxSend( stream_t *s, block_t *p_block )
     block_FifoPut( p_sys->p_fifo, p_block );
 }
 
+int stream_DemuxControlVa( stream_t *s, int query, va_list args )
+{
+    stream_sys_t *sys = s->p_sys;
+
+    switch( query )
+    {
+        case DEMUX_GET_POSITION:
+            vlc_mutex_lock( &sys->lock );
+            *va_arg( args, double * ) = sys->stats.position;
+            vlc_mutex_unlock( &sys->lock );
+            break;
+        case DEMUX_GET_LENGTH:
+            vlc_mutex_lock( &sys->lock );
+            *va_arg( args, int64_t * ) = sys->stats.length;
+            vlc_mutex_unlock( &sys->lock );
+            break;
+        case DEMUX_GET_TIME:
+            vlc_mutex_lock( &sys->lock );
+            *va_arg( args, int64_t * ) = sys->stats.time;
+            vlc_mutex_unlock( &sys->lock );
+            break;
+        default:
+            return VLC_EGENERIC;
+    }
+    return VLC_SUCCESS;
+}
+
 static void DStreamDelete( stream_t *s )
 {
     stream_sys_t *p_sys = s->p_sys;
     block_t *p_empty;
 
     vlc_object_kill( s );
-#warning FIXME: not thread-safe:
-    if( p_sys->p_demux )
-        vlc_object_kill( p_sys->p_demux );
-    p_empty = block_New( s, 1 ); p_empty->i_buffer = 0;
+    p_empty = block_Alloc( 0 );
     block_FifoPut( p_sys->p_fifo, p_empty );
     vlc_join( p_sys->thread, NULL );
+    vlc_mutex_destroy( &p_sys->lock );
 
-    if( p_sys->p_demux )
-        demux_Delete( p_sys->p_demux );
     if( p_sys->p_block )
         block_Release( p_sys->p_block );
 
@@ -278,27 +313,48 @@ static void* DStreamThread( void *obj )
     stream_t *s = (stream_t *)obj;
     stream_sys_t *p_sys = s->p_sys;
     demux_t *p_demux;
-    int canc = vlc_savecancel();
 
     /* Create the demuxer */
-    if( !(p_demux = demux_New( s, s->p_input, "", p_sys->psz_name, "", s, p_sys->out,
-                               false )) )
-    {
+    p_demux = demux_New( s, s->p_input, "", p_sys->psz_name, "", s, p_sys->out,
+                         false );
+    if( p_demux == NULL )
         return NULL;
-    }
 
     /* stream_Demux cannot apply DVB filters.
      * Get all programs and let the E/S output sort them out. */
     demux_Control( p_demux, DEMUX_SET_GROUP, -1, NULL );
-    p_sys->p_demux = p_demux;
 
     /* Main loop */
-    while( vlc_object_alive( s ) && vlc_object_alive( p_demux ) )
+    mtime_t next_update = 0;
+    while( vlc_object_alive( s ) )
     {
-        if( demux_Demux( p_demux ) <= 0 ) break;
+        if( p_demux->info.i_update || mdate() >= next_update )
+        {
+            double newpos;
+            int64_t newlen, newtime;
+
+            if( demux_Control( p_demux, DEMUX_GET_POSITION, &newpos ) )
+                newpos = 0.;
+            if( demux_Control( p_demux, DEMUX_GET_LENGTH, &newlen ) )
+                newlen = 0;
+            if( demux_Control( p_demux, DEMUX_GET_POSITION, &newtime ) )
+                newtime = 0;
+
+            vlc_mutex_lock( &p_sys->lock );
+            p_sys->stats.position = newpos;
+            p_sys->stats.length = newlen;
+            p_sys->stats.time = newtime;
+            vlc_mutex_unlock( &p_sys->lock );
+
+            p_demux->info.i_update = 0;
+            next_update = mdate() + (CLOCK_FREQ / 4);
+        }
+
+        if( demux_Demux( p_demux ) <= 0 )
+            break;
     }
 
-    vlc_restorecancel( canc );
-    vlc_object_kill( p_demux );
+    demux_Delete( p_demux );
+
     return NULL;
 }

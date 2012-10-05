@@ -1,7 +1,7 @@
 /*****************************************************************************
  * opengl.c: OpenGL and OpenGL ES output common code
  *****************************************************************************
- * Copyright (C) 2004-2011 VLC authors and VideoLAN
+ * Copyright (C) 2004-2012 VLC authors and VideoLAN
  * Copyright (C) 2009, 2011 Laurent Aimar
  *
  * Authors: Cyril Deguet <asmax@videolan.org>
@@ -9,6 +9,7 @@
  *          Eric Petit <titer@m0k.org>
  *          Cedric Cocquebert <cedric.cocquebert@supelec.fr>
  *          Laurent Aimar <fenrir _AT_ videolan _DOT_ org>
+ *          Ilkka Ollakka <ileoo@videolan.org>
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -34,24 +35,45 @@
 #include <vlc_opengl.h>
 
 #include "opengl.h"
-// Define USE_OPENGL_ES to the GL ES Version you want to select
 
-#ifdef __APPLE__
-# define PFNGLGENPROGRAMSARBPROC              typeof(glGenProgramsARB)*
-# define PFNGLBINDPROGRAMARBPROC              typeof(glBindProgramARB)*
-# define PFNGLPROGRAMSTRINGARBPROC            typeof(glProgramStringARB)*
-# define PFNGLDELETEPROGRAMSARBPROC           typeof(glDeleteProgramsARB)*
-# define PFNGLPROGRAMLOCALPARAMETER4FVARBPROC typeof(glProgramLocalParameter4fvARB)*
-# define PFNGLACTIVETEXTUREPROC               typeof(glActiveTexture)*
-# define PFNGLCLIENTACTIVETEXTUREPROC         typeof(glClientActiveTexture)*
-#endif
-
-/* RV16 */
-#ifndef GL_UNSIGNED_SHORT_5_6_5
-# define GL_UNSIGNED_SHORT_5_6_5 0x8363
-#endif
 #ifndef GL_CLAMP_TO_EDGE
 # define GL_CLAMP_TO_EDGE 0x812F
+#endif
+
+#ifdef __APPLE__
+#   define PFNGLGENBUFFERSPROC               typeof(glGenBuffers)*
+#   define PFNGLBINDBUFFERPROC               typeof(glBindBuffer)*
+#   define PFNGLDELETEBUFFERSPROC            typeof(glDeleteBuffers)*
+#   define PFNGLBUFFERSUBDATAPROC            typeof(glBufferSubData)*
+#   define PFNGLBUFFERDATAPROC               typeof(glBufferData)*
+#   define PFNGLGETPROGRAMIVPROC             typeof(glGetProgramiv)*
+#   define PFNGLGETPROGRAMINFOLOGPROC        typeof(glGetProgramInfoLog)*
+#   define PFNGLGETSHADERIVPROC              typeof(glGetShaderiv)*
+#   define PFNGLGETSHADERINFOLOGPROC         typeof(glGetShaderInfoLog)*
+#   define PFNGLGETUNIFORMLOCATIONPROC       typeof(glGetUniformLocation)*
+#   define PFNGLGETATTRIBLOCATIONPROC        typeof(glGetAttribLocation)*
+#   define PFNGLVERTEXATTRIBPOINTERPROC      typeof(glVertexAttribPointer)*
+#   define PFNGLENABLEVERTEXATTRIBARRAYPROC  typeof(glEnableVertexAttribArray)*
+#   define PFNGLUNIFORM4FVPROC               typeof(glUniform4fv)*
+#   define PFNGLUNIFORM4FPROC                typeof(glUniform4f)*
+#   define PFNGLUNIFORM3IPROC                typeof(glUniform3i)*
+#   define PFNGLUNIFORM1IPROC                typeof(glUniform1i)*
+#   define PFNGLCREATESHADERPROC             typeof(glCreateShader)*
+#   define PFNGLSHADERSOURCEPROC             typeof(glShaderSource)*
+#   define PFNGLCOMPILESHADERPROC            typeof(glCompileShader)*
+#   define PFNGLDETACHSHADERPROC             typeof(glDetachShader)*
+#   define PFNGLDELETESHADERPROC             typeof(glDeleteShader)*
+#   define PFNGLCREATEPROGRAMPROC            typeof(glCreateProgram)*
+#   define PFNGLLINKPROGRAMPROC              typeof(glLinkProgram)*
+#   define PFNGLUSEPROGRAMPROC               typeof(glUseProgram)*
+#   define PFNGLDELETEPROGRAMPROC            typeof(glDeleteProgram)*
+#   define PFNGLATTACHSHADERPROC             typeof(glAttachShader)*
+#   define PFNGLACTIVETEXTUREPROC            typeof(glActiveTexture)*
+#   define PFNGLCLIENTACTIVETEXTUREPROC      typeof(glClientActiveTexture)*
+#if USE_OPENGL_ES
+#   define GL_UNPACK_ROW_LENGTH 0
+#   import <CoreFoundation/CoreFoundation.h>
+#endif
 #endif
 
 #if USE_OPENGL_ES
@@ -83,6 +105,7 @@ typedef struct {
 } gl_region_t;
 
 struct vout_display_opengl_t {
+
     vlc_gl_t   *gl;
 
     video_format_t fmt;
@@ -104,21 +127,60 @@ struct vout_display_opengl_t {
 
     picture_pool_t *pool;
 
-    GLuint     program;
+    /* index 0 for normal and 1 for subtitle overlay */
+    GLuint     program[2];
+    GLint      shader[3]; //3. is for the common vertex shader
     int        local_count;
-    GLfloat    local_value[16][4];
+    GLfloat    local_value[16];
 
-    /* fragment_program */
-    PFNGLGENPROGRAMSARBPROC              GenProgramsARB;
-    PFNGLBINDPROGRAMARBPROC              BindProgramARB;
-    PFNGLPROGRAMSTRINGARBPROC            ProgramStringARB;
-    PFNGLDELETEPROGRAMSARBPROC           DeleteProgramsARB;
-    PFNGLPROGRAMLOCALPARAMETER4FVARBPROC ProgramLocalParameter4fvARB;
+    /* Buffer commands */
+    PFNGLGENBUFFERSPROC   GenBuffers;
+    PFNGLBINDBUFFERPROC   BindBuffer;
+    PFNGLDELETEBUFFERSPROC DeleteBuffers;
+    PFNGLBUFFERSUBDATAPROC BufferSubData;
+
+    PFNGLBUFFERDATAPROC   BufferData;
+
+    /* Shader variables commands*/
+
+    PFNGLGETUNIFORMLOCATIONPROC      GetUniformLocation;
+    PFNGLGETATTRIBLOCATIONPROC       GetAttribLocation;
+    PFNGLVERTEXATTRIBPOINTERPROC     VertexAttribPointer;
+    PFNGLENABLEVERTEXATTRIBARRAYPROC EnableVertexAttribArray;
+
+    PFNGLUNIFORM4FVPROC   Uniform4fv;
+    PFNGLUNIFORM4FPROC    Uniform4f;
+    PFNGLUNIFORM3IPROC    Uniform3i;
+    PFNGLUNIFORM1IPROC    Uniform1i;
+
+    /* Shader command */
+    PFNGLCREATESHADERPROC CreateShader;
+    PFNGLSHADERSOURCEPROC ShaderSource;
+    PFNGLCOMPILESHADERPROC CompileShader;
+    PFNGLDETACHSHADERPROC   DetachShader;
+    PFNGLDELETESHADERPROC   DeleteShader;
+
+    PFNGLCREATEPROGRAMPROC CreateProgram;
+    PFNGLLINKPROGRAMPROC   LinkProgram;
+    PFNGLUSEPROGRAMPROC    UseProgram;
+    PFNGLDELETEPROGRAMPROC DeleteProgram;
+
+    PFNGLATTACHSHADERPROC  AttachShader;
+
+    /* Shader log commands */
+    PFNGLGETPROGRAMIVPROC  GetProgramiv;
+    PFNGLGETPROGRAMINFOLOGPROC GetProgramInfoLog;
+    PFNGLGETSHADERIVPROC   GetShaderiv;
+    PFNGLGETSHADERINFOLOGPROC GetShaderInfoLog;
+
 
     /* multitexture */
+    PFNGLACTIVETEXTUREPROC  ActiveTexture;
+    PFNGLCLIENTACTIVETEXTUREPROC  ClientActiveTexture;
     bool use_multitexture;
-    PFNGLACTIVETEXTUREPROC   ActiveTexture;
-    PFNGLCLIENTACTIVETEXTUREPROC ClientActiveTexture;
+
+    /* Non-power-of-2 texture size support */
+    bool supports_npot;
 };
 
 static inline int GetAlignedSize(unsigned size)
@@ -128,6 +190,7 @@ static inline int GetAlignedSize(unsigned size)
     return ((align >> 1) == size) ? size : align;
 }
 
+#if !USE_OPENGL_ES
 static bool IsLuminance16Supported(int target)
 {
     GLuint texture;
@@ -143,6 +206,7 @@ static bool IsLuminance16Supported(int target)
 
     return size == 16;
 }
+#endif
 
 vout_display_opengl_t *vout_display_opengl_New(video_format_t *fmt,
                                                const vlc_fourcc_t **subpicture_chromas,
@@ -158,65 +222,30 @@ vout_display_opengl_t *vout_display_opengl_New(video_format_t *fmt,
         return NULL;
     }
 
+    if( vgl->gl->getProcAddress == NULL )
+    {
+        fprintf(stderr, "getProcAddress not implemented, bailing out\n");
+        free( vgl );
+        return NULL;
+    }
+
     const char *extensions = (const char *)glGetString(GL_EXTENSIONS);
-
-    /* Load extensions */
-    bool supports_fp = false;
-    if (HasExtension(extensions, "GL_ARB_fragment_program")) {
-#if !defined(MACOS_OPENGL)
-        vgl->GenProgramsARB    = (PFNGLGENPROGRAMSARBPROC)vlc_gl_GetProcAddress(vgl->gl, "glGenProgramsARB");
-        vgl->BindProgramARB    = (PFNGLBINDPROGRAMARBPROC)vlc_gl_GetProcAddress(vgl->gl, "glBindProgramARB");
-        vgl->ProgramStringARB  = (PFNGLPROGRAMSTRINGARBPROC)vlc_gl_GetProcAddress(vgl->gl, "glProgramStringARB");
-        vgl->DeleteProgramsARB = (PFNGLDELETEPROGRAMSARBPROC)vlc_gl_GetProcAddress(vgl->gl, "glDeleteProgramsARB");
-        vgl->ProgramLocalParameter4fvARB = (PFNGLPROGRAMLOCALPARAMETER4FVARBPROC)vlc_gl_GetProcAddress(vgl->gl, "glProgramLocalParameter4fvARB");
+#if !USE_OPENGL_ES
+    const unsigned char *ogl_version = glGetString(GL_VERSION);
+    bool supports_shaders = strverscmp((const char *)ogl_version, "2.0") >= 0;
 #else
-        vgl->GenProgramsARB = glGenProgramsARB;
-        vgl->BindProgramARB = glBindProgramARB;
-        vgl->ProgramStringARB = glProgramStringARB;
-        vgl->DeleteProgramsARB = glDeleteProgramsARB;
-        vgl->ProgramLocalParameter4fvARB = glProgramLocalParameter4fvARB;
+    bool supports_shaders = false;
+#ifdef __APPLE__
+    if( kCFCoreFoundationVersionNumber >= 786. )
+         supports_shaders = true;
 #endif
-        supports_fp = vgl->GenProgramsARB &&
-                      vgl->BindProgramARB &&
-                      vgl->ProgramStringARB &&
-                      vgl->DeleteProgramsARB &&
-                      vgl->ProgramLocalParameter4fvARB;
-    }
+#endif
 
-    bool supports_multitexture = false;
     GLint max_texture_units = 0;
-    if (HasExtension(extensions, "GL_ARB_multitexture")) {
-#if !defined(MACOS_OPENGL)
-        vgl->ActiveTexture   = (PFNGLACTIVETEXTUREPROC)vlc_gl_GetProcAddress(vgl->gl, "glActiveTexture");
-        vgl->ClientActiveTexture = (PFNGLCLIENTACTIVETEXTUREPROC)vlc_gl_GetProcAddress(vgl->gl, "glClientActiveTexture");
-#else
-        vgl->ActiveTexture = glActiveTexture;
-        vgl->ClientActiveTexture = glClientActiveTexture;
-#endif
-        supports_multitexture = vgl->ActiveTexture &&
-                                vgl->ClientActiveTexture;
-        if (supports_multitexture)
-            glGetIntegerv(GL_MAX_TEXTURE_UNITS_ARB, &max_texture_units);
-    }
+    glGetIntegerv(GL_MAX_TEXTURE_IMAGE_UNITS, &max_texture_units);
 
     /* Initialize with default chroma */
     vgl->fmt = *fmt;
-#if USE_OPENGL_ES
-    vgl->fmt.i_chroma = VLC_CODEC_RGB16;
-#   if defined(WORDS_BIGENDIAN)
-    vgl->fmt.i_rmask  = 0x001f;
-    vgl->fmt.i_gmask  = 0x07e0;
-    vgl->fmt.i_bmask  = 0xf800;
-#   else
-    vgl->fmt.i_rmask  = 0xf800;
-    vgl->fmt.i_gmask  = 0x07e0;
-    vgl->fmt.i_bmask  = 0x001f;
-#   endif
-    vgl->tex_target   = GL_TEXTURE_2D;
-    vgl->tex_format   = GL_RGB;
-    vgl->tex_internal = GL_RGB;
-    vgl->tex_type     = GL_UNSIGNED_SHORT_5_6_5;
-#else
     vgl->fmt.i_chroma = VLC_CODEC_RGB32;
 #   if defined(WORDS_BIGENDIAN)
     vgl->fmt.i_rmask  = 0xff000000;
@@ -231,11 +260,10 @@ vout_display_opengl_t *vout_display_opengl_New(video_format_t *fmt,
     vgl->tex_format   = GL_RGBA;
     vgl->tex_internal = GL_RGBA;
     vgl->tex_type     = GL_UNSIGNED_BYTE;
-#endif
     /* Use YUV if possible and needed */
     bool need_fs_yuv = false;
     float yuv_range_correction = 1.0;
-    if (supports_fp && supports_multitexture && max_texture_units >= 3 &&
+    if ( max_texture_units >= 3 && supports_shaders &&
         vlc_fourcc_IsYUV(fmt->i_chroma) && !vlc_fourcc_IsYUV(vgl->fmt.i_chroma)) {
         const vlc_fourcc_t *list = vlc_fourcc_GetYUVFallback(fmt->i_chroma);
         while (*list) {
@@ -249,6 +277,7 @@ vout_display_opengl_t *vout_display_opengl_New(video_format_t *fmt,
                 vgl->tex_type     = GL_UNSIGNED_BYTE;
                 yuv_range_correction = 1.0;
                 break;
+#if !USE_OPENGL_ES
             } else if (dsc && dsc->plane_count == 3 && dsc->pixel_size == 2 &&
                        IsLuminance16Supported(vgl->tex_target)) {
                 need_fs_yuv       = true;
@@ -259,114 +288,224 @@ vout_display_opengl_t *vout_display_opengl_New(video_format_t *fmt,
                 vgl->tex_type     = GL_UNSIGNED_SHORT;
                 yuv_range_correction = (float)((1 << 16) - 1) / ((1 << dsc->pixel_bits) - 1);
                 break;
+#endif
             }
             list++;
         }
     }
 
+    vgl->GenBuffers    = (PFNGLGENBUFFERSPROC)vlc_gl_GetProcAddress(vgl->gl, "glGenBuffers");
+    vgl->BindBuffer    = (PFNGLBINDBUFFERPROC)vlc_gl_GetProcAddress(vgl->gl, "glBindBuffer");
+    vgl->BufferData    = (PFNGLBUFFERDATAPROC)vlc_gl_GetProcAddress(vgl->gl, "glBufferData");
+    vgl->BufferSubData = (PFNGLBUFFERSUBDATAPROC)vlc_gl_GetProcAddress(vgl->gl, "glBufferSubData");
+    vgl->DeleteBuffers = (PFNGLDELETEBUFFERSPROC)vlc_gl_GetProcAddress(vgl->gl, "glDeleteBuffers");
+
+    vgl->CreateShader  = (PFNGLCREATESHADERPROC)vlc_gl_GetProcAddress(vgl->gl, "glCreateShader");
+    vgl->ShaderSource  = (PFNGLSHADERSOURCEPROC)vlc_gl_GetProcAddress(vgl->gl, "glShaderSource");
+    vgl->CompileShader = (PFNGLCOMPILESHADERPROC)vlc_gl_GetProcAddress(vgl->gl, "glCompileShader");
+    vgl->AttachShader  = (PFNGLATTACHSHADERPROC)vlc_gl_GetProcAddress(vgl->gl, "glAttachShader");
+
+    vgl->GetProgramiv  = (PFNGLGETPROGRAMIVPROC)vlc_gl_GetProcAddress(vgl->gl, "glGetProgramiv");
+    vgl->GetShaderiv   = (PFNGLGETSHADERIVPROC)vlc_gl_GetProcAddress(vgl->gl, "glGetShaderiv");
+    vgl->GetProgramInfoLog  = (PFNGLGETPROGRAMINFOLOGPROC)vlc_gl_GetProcAddress(vgl->gl, "glGetProgramInfoLog");
+    vgl->GetShaderInfoLog   = (PFNGLGETSHADERINFOLOGPROC)vlc_gl_GetProcAddress(vgl->gl, "glGetShaderInfoLog");
+
+    vgl->DetachShader  = (PFNGLDETACHSHADERPROC)vlc_gl_GetProcAddress(vgl->gl, "glDetachShader");
+    vgl->DeleteShader  = (PFNGLDELETESHADERPROC)vlc_gl_GetProcAddress(vgl->gl, "glDeleteShader");
+
+    vgl->GetUniformLocation = (PFNGLGETUNIFORMLOCATIONPROC)vlc_gl_GetProcAddress(vgl->gl, "glGetUniformLocation");
+    vgl->GetAttribLocation  = (PFNGLGETATTRIBLOCATIONPROC)vlc_gl_GetProcAddress(vgl->gl, "glGetAttribLocation");
+    vgl->VertexAttribPointer= (PFNGLVERTEXATTRIBPOINTERPROC)vlc_gl_GetProcAddress(vgl->gl, "glVertexAttribPointer");
+    vgl->EnableVertexAttribArray = (PFNGLENABLEVERTEXATTRIBARRAYPROC)vlc_gl_GetProcAddress(vgl->gl, "glEnableVertexAttribArray");
+    vgl->Uniform4fv    = (PFNGLUNIFORM4FVPROC)vlc_gl_GetProcAddress(vgl->gl,"glUniform4fv");
+    vgl->Uniform4f     = (PFNGLUNIFORM4FPROC)vlc_gl_GetProcAddress(vgl->gl,"glUniform4f");
+    vgl->Uniform3i     = (PFNGLUNIFORM3IPROC)vlc_gl_GetProcAddress(vgl->gl,"glUniform3i");
+    vgl->Uniform1i     = (PFNGLUNIFORM1IPROC)vlc_gl_GetProcAddress(vgl->gl,"glUniform1i");
+
+    vgl->CreateProgram = (PFNGLCREATEPROGRAMPROC)vlc_gl_GetProcAddress(vgl->gl, "glCreateProgram");
+    vgl->LinkProgram   = (PFNGLLINKPROGRAMPROC)vlc_gl_GetProcAddress(vgl->gl, "glLinkProgram");
+    vgl->UseProgram    = (PFNGLUSEPROGRAMPROC)vlc_gl_GetProcAddress(vgl->gl, "glUseProgram");
+    vgl->DeleteProgram = (PFNGLDELETEPROGRAMPROC)vlc_gl_GetProcAddress(vgl->gl, "glDeleteProgram");
+    vgl->ActiveTexture = (PFNGLACTIVETEXTUREPROC)vlc_gl_GetProcAddress(vgl->gl, "glActiveTexture");
+    vgl->ClientActiveTexture = (PFNGLCLIENTACTIVETEXTUREPROC)vlc_gl_GetProcAddress(vgl->gl, "glClientActiveTexture");
+
     vgl->chroma = vlc_fourcc_GetChromaDescription(vgl->fmt.i_chroma);
     vgl->use_multitexture = vgl->chroma->plane_count > 1;
+    vgl->supports_npot = HasExtension( extensions, "GL_ARB_texture_non_power_of_two" ) ||
+                         HasExtension( extensions, "GL_APPLE_texture_2D_limited_npot" );
 
-    bool supports_npot = false;
-#if USE_OPENGL_ES == 2
-    supports_npot = true;
-#else
-    supports_npot |= HasExtension(extensions, "GL_APPLE_texture_2D_limited_npot") ||
-                     HasExtension(extensions, "GL_ARB_texture_non_power_of_two");
-#endif
+    if( !vgl->CreateShader || !vgl->ShaderSource || !vgl->CreateProgram )
+    {
+        fprintf(stderr, "Looks like you don't have all the opengl we need. Driver is %s, giving up\n", glGetString(GL_VERSION));
+        free( vgl );
+        return NULL;
+    }
+
 
     /* Texture size */
     for (unsigned j = 0; j < vgl->chroma->plane_count; j++) {
         int w = vgl->fmt.i_width  * vgl->chroma->p[j].w.num / vgl->chroma->p[j].w.den;
         int h = vgl->fmt.i_height * vgl->chroma->p[j].h.num / vgl->chroma->p[j].h.den;
-        if (supports_npot) {
+        if( vgl->supports_npot )
+        {
             vgl->tex_width[j]  = w;
             vgl->tex_height[j] = h;
-        }
-        else {
-            /* A texture must have a size aligned on a power of 2 */
+        } else {
             vgl->tex_width[j]  = GetAlignedSize(w);
             vgl->tex_height[j] = GetAlignedSize(h);
         }
     }
 
     /* Build fragment program if needed */
-    vgl->program = 0;
+    vgl->program[0] = 0;
+    vgl->program[1] = 0;
     vgl->local_count = 0;
-    if (supports_fp) {
+    vgl->shader[0] = vgl->shader[1] = vgl->shader[2] = -1;
+    if (supports_shaders) {
         char *code = NULL;
 
-        if (need_fs_yuv) {
             /* [R/G/B][Y U V O] from TV range to full range
              * XXX we could also do hue/brightness/constrast/gamma
              * by simply changing the coefficients
              */
-            const float matrix_bt601_tv2full[3][4] = {
-                { 1.164383561643836,  0.0000,             1.596026785714286, -0.874202217873451 },
-                { 1.164383561643836, -0.391762290094914, -0.812967647237771,  0.531667823499146 },
-                { 1.164383561643836,  2.017232142857142,  0.0000,            -1.085630789302022 },
+            const float matrix_bt601_tv2full[12] = {
+                 1.164383561643836,  0.0000,             1.596026785714286, -0.874202217873451 ,
+                 1.164383561643836, -0.391762290094914, -0.812967647237771,  0.531667823499146 ,
+                 1.164383561643836,  2.017232142857142,  0.0000,            -1.085630789302022 ,
             };
-            const float matrix_bt709_tv2full[3][4] = {
-                { 1.164383561643836,  0.0000,             1.792741071428571, -0.972945075016308 },
-                { 1.164383561643836, -0.21324861427373,  -0.532909328559444,  0.301482665475862 },
-                { 1.164383561643836,  2.112401785714286,  0.0000,            -1.133402217873451 },
+            const float matrix_bt709_tv2full[12] = {
+                 1.164383561643836,  0.0000,             1.792741071428571, -0.972945075016308 ,
+                 1.164383561643836, -0.21324861427373,  -0.532909328559444,  0.301482665475862 ,
+                 1.164383561643836,  2.112401785714286,  0.0000,            -1.133402217873451 ,
             };
-            const float (*matrix)[4] = fmt->i_height > 576 ? matrix_bt709_tv2full
+            const float (*matrix) = fmt->i_height > 576 ? matrix_bt709_tv2full
                                                            : matrix_bt601_tv2full;
 
             /* Basic linear YUV -> RGB conversion using bilinear interpolation */
-            const char *template_yuv =
-                "!!ARBfp1.0"
-                "OPTION ARB_precision_hint_fastest;"
+            const char *template_glsl_yuv =
+                "#version 120\n"
+                "uniform sampler2D Texture[3];"
+                "uniform vec4      coefficient[4];"
+                "varying vec4      TexCoord0,TexCoord1,TexCoord2;"
 
-                "TEMP src;"
-                "TEX src.x,  fragment.texcoord[0], texture[0], 2D;"
-                "TEX src.%c, fragment.texcoord[1], texture[1], 2D;"
-                "TEX src.%c, fragment.texcoord[2], texture[2], 2D;"
+                "void main(void) {"
+                " vec4 x,y,z,result;"
+                " x  = texture2D(Texture[0], TexCoord0.st);"
+                " %c = texture2D(Texture[1], TexCoord1.st);"
+                " %c = texture2D(Texture[2], TexCoord2.st);"
 
-                "PARAM coefficient[4] = { program.local[0..3] };"
-
-                "TEMP tmp;"
-                "MAD  tmp.rgb,          src.xxxx, coefficient[0], coefficient[3];"
-                "MAD  tmp.rgb,          src.yyyy, coefficient[1], tmp;"
-                "MAD  result.color.rgb, src.zzzz, coefficient[2], tmp;"
-                "END";
+                " result = x * coefficient[0] + coefficient[3];"
+                " result = (y * coefficient[1]) + result;"
+                " result = (z * coefficient[2]) + result;"
+                " gl_FragColor = result;"
+                "}";
             bool swap_uv = vgl->fmt.i_chroma == VLC_CODEC_YV12 ||
                            vgl->fmt.i_chroma == VLC_CODEC_YV9;
-            if (asprintf(&code, template_yuv,
+            if (asprintf(&code, template_glsl_yuv,
                          swap_uv ? 'z' : 'y',
                          swap_uv ? 'y' : 'z') < 0)
                 code = NULL;
 
             for (int i = 0; i < 4; i++) {
                 float correction = i < 3 ? yuv_range_correction : 1.0;
-                for (int j = 0; j < 4; j++) {
-                    vgl->local_value[vgl->local_count + i][j] = j < 3 ? correction * matrix[j][i] : 0.0;
-                }
+                /* We place coefficient values for coefficient[4] in one array from matrix values.
+                   Notice that we fill values from top down instead of left to right.*/
+                for( int j = 0; j < 4; j++ )
+                    vgl->local_value[vgl->local_count + i*4+j] = j < 3 ? correction * matrix[j*4+i] : 0.0 ;
             }
             vgl->local_count += 4;
-        }
-        if (code) {
-        // Here you have shaders
-            vgl->GenProgramsARB(1, &vgl->program);
-            vgl->BindProgramARB(GL_FRAGMENT_PROGRAM_ARB, vgl->program);
-            vgl->ProgramStringARB(GL_FRAGMENT_PROGRAM_ARB,
-                                  GL_PROGRAM_FORMAT_ASCII_ARB,
-                                  strlen(code), (const GLbyte*)code);
-            if (glGetError() == GL_INVALID_OPERATION) {
-                /* FIXME if the program was needed for YUV, the video will be broken */
-#if 0
-                GLint position;
-                glGetIntegerv(GL_PROGRAM_ERROR_POSITION_ARB, &position);
 
-                const char *msg = (const char *)glGetString(GL_PROGRAM_ERROR_STRING_ARB);
-                fprintf(stderr, "GL_INVALID_OPERATION: error at %d: %s\n", position, msg);
-#endif
-                vgl->DeleteProgramsARB(1, &vgl->program);
-                vgl->program = 0;
+            // Basic vertex shader that we use in both cases
+            const char *vertexShader =
+            "#version 120\n"
+            "varying   vec4 TexCoord0,TexCoord1, TexCoord2;"
+            "attribute vec4 MultiTexCoord0,MultiTexCoord1,MultiTexCoord2;"
+            "attribute vec4 vertex_position;"
+            "void main() {"
+            " TexCoord0 = MultiTexCoord0;"
+            " TexCoord1 = MultiTexCoord1;"
+            " TexCoord2 = MultiTexCoord2;"
+            " gl_Position = vertex_position; }";
+
+            // Dummy shader for text overlay
+            const char *helloShader =
+            "#version 120\n"
+            "uniform sampler2D Texture[3];"
+            "uniform vec4 fillColor;"
+            "varying vec4 TexCoord0,TexCoord1,TexCoord2;"
+            "void main()"
+            "{ "
+            "  gl_FragColor = texture2D(Texture[0], TexCoord0.st)*fillColor;}";
+
+            vgl->shader[2] = vgl->CreateShader( GL_VERTEX_SHADER );
+            vgl->ShaderSource( vgl->shader[2], 1, (const GLchar **)&vertexShader, NULL);
+            vgl->CompileShader( vgl->shader[2] );
+
+            /* Create 'dummy' shader that handles subpicture overlay for now*/
+            vgl->shader[1] = vgl->CreateShader( GL_FRAGMENT_SHADER );
+            vgl->ShaderSource( vgl->shader[1], 1, &helloShader, NULL);
+            vgl->CompileShader( vgl->shader[1] );
+            vgl->program[1] = vgl->CreateProgram();
+            vgl->AttachShader( vgl->program[1], vgl->shader[1]);
+            vgl->AttachShader( vgl->program[1], vgl->shader[2]);
+            vgl->LinkProgram( vgl->program[1] );
+
+            // Create shader from code
+            vgl->shader[0] = vgl->CreateShader( GL_FRAGMENT_SHADER );
+            vgl->program[0] = vgl->CreateProgram();
+            if( need_fs_yuv )
+            {
+                vgl->ShaderSource( vgl->shader[0], 1, (const GLchar **)&code, NULL );
+                vgl->CompileShader( vgl->shader[0]);
+                vgl->AttachShader( vgl->program[0], vgl->shader[0] );
+            } else {
+                /* Use simpler shader if we don't need to to yuv -> rgb,
+                   for example when input is allready rgb (.bmp image).*/
+                vgl->AttachShader( vgl->program[0], vgl->shader[1] );
             }
+            vgl->AttachShader( vgl->program[0], vgl->shader[2]);
+
+            vgl->LinkProgram( vgl->program[0] );
+
             free(code);
-        }
+            for( GLuint i = 0; i < 2; i++ )
+            {
+                int infoLength = 0;
+                int charsWritten = 0;
+                char *infolog;
+                vgl->GetProgramiv( vgl->program[i], GL_INFO_LOG_LENGTH, &infoLength );
+                if( infoLength > 1 )
+                {
+                    /* If there is some message, better to check linking is ok */
+                    GLint link_status = GL_TRUE;
+                    vgl->GetProgramiv( vgl->program[i], GL_LINK_STATUS, &link_status );
+
+                    infolog = (char *)malloc(infoLength);
+                    vgl->GetProgramInfoLog( vgl->program[i], infoLength, &charsWritten, infolog );
+                    fprintf(stderr, "shader program %d:%s %d\n",i,infolog,infoLength);
+                    free(infolog);
+
+                    /* Check shaders messages too */
+                    for( GLuint j = 0; j < 2; j++ )
+                    {
+                        vgl->GetShaderiv( vgl->shader[j], GL_INFO_LOG_LENGTH, &infoLength );
+                        if( infoLength > 1 )
+                        {
+                            infolog = (char *)malloc(infoLength);
+                            vgl->GetShaderInfoLog( vgl->shader[j], infoLength, &charsWritten, infolog );
+                            fprintf(stderr, "shader %d: %s\n",j,infolog );
+                            free( infolog );
+                        }
+                    }
+
+                    if( link_status == GL_FALSE )
+                    {
+                        fprintf( stderr, "Unable to use program %d\n", i );
+                        free( vgl );
+                        return NULL;
+                    }
+                }
+            }
     }
 
     /* */
@@ -390,11 +529,7 @@ vout_display_opengl_t *vout_display_opengl_New(video_format_t *fmt,
 
     *fmt = vgl->fmt;
     if (subpicture_chromas) {
-        *subpicture_chromas = NULL;
-#if !USE_OPENGL_ES
-        if (supports_npot)
-            *subpicture_chromas = gl_subpicture_chromas;
-#endif
+        *subpicture_chromas = gl_subpicture_chromas;
     }
     return vgl;
 }
@@ -414,8 +549,13 @@ void vout_display_opengl_Delete(vout_display_opengl_t *vgl)
         }
         free(vgl->region);
 
-        if (vgl->program)
-            vgl->DeleteProgramsARB(1, &vgl->program);
+        if (vgl->program[0])
+        {
+            for( int i = 0; i < 2; i++ )
+                vgl->DeleteProgram( vgl->program[i] );
+            for( int i = 0; i < 3; i++ )
+                vgl->DeleteShader( vgl->shader[i] );
+        }
 
         vlc_gl_Unlock(vgl->gl);
     }
@@ -458,7 +598,10 @@ picture_pool_t *vout_display_opengl_GetPool(vout_display_opengl_t *vgl, unsigned
         glGenTextures(vgl->chroma->plane_count, vgl->texture[i]);
         for (unsigned j = 0; j < vgl->chroma->plane_count; j++) {
             if (vgl->use_multitexture)
+            {
                 vgl->ActiveTexture(GL_TEXTURE0 + j);
+                vgl->ClientActiveTexture(GL_TEXTURE0 + j);
+            }
             glBindTexture(vgl->tex_target, vgl->texture[i][j]);
 
 #if !USE_OPENGL_ES
@@ -514,7 +657,10 @@ int vout_display_opengl_Prepare(vout_display_opengl_t *vgl,
     /* Update the texture */
     for (unsigned j = 0; j < vgl->chroma->plane_count; j++) {
         if (vgl->use_multitexture)
+        {
             vgl->ActiveTexture(GL_TEXTURE0 + j);
+            vgl->ClientActiveTexture(GL_TEXTURE0 + j);
+        }
         glBindTexture(vgl->tex_target, vgl->texture[0][j]);
         glPixelStorei(GL_UNPACK_ROW_LENGTH, picture->p[j].i_pitch / picture->p[j].i_pixel_pitch);
         glTexSubImage2D(vgl->tex_target, 0,
@@ -540,7 +686,10 @@ int vout_display_opengl_Prepare(vout_display_opengl_t *vgl,
         vgl->region       = calloc(count, sizeof(*vgl->region));
 
         if (vgl->use_multitexture)
+        {
             vgl->ActiveTexture(GL_TEXTURE0 + 0);
+            vgl->ClientActiveTexture(GL_TEXTURE0 + 0);
+        }
         int i = 0;
         for (subpicture_region_t *r = subpicture->p_region; r; r = r->p_next, i++) {
             gl_region_t *glr = &vgl->region[i];
@@ -549,6 +698,11 @@ int vout_display_opengl_Prepare(vout_display_opengl_t *vgl,
             glr->type   = GL_UNSIGNED_BYTE;
             glr->width  = r->fmt.i_visible_width;
             glr->height = r->fmt.i_visible_height;
+            if(!vgl->supports_npot )
+            {
+                glr->width  = GetAlignedSize( glr->width );
+                glr->height = GetAlignedSize( glr->height );
+            }
             glr->alpha  = (float)subpicture->i_alpha * r->i_alpha / 255 / 255;
             glr->left   =  2.0 * (r->i_x                          ) / subpicture->i_original_picture_width  - 1.0;
             glr->top    = -2.0 * (r->i_y                          ) / subpicture->i_original_picture_height + 1.0;
@@ -580,8 +734,10 @@ int vout_display_opengl_Prepare(vout_display_opengl_t *vgl,
             } else {
                 glGenTextures(1, &glr->texture);
                 glBindTexture(GL_TEXTURE_2D, glr->texture);
+#if !USE_OPENGL_ES
                 glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_PRIORITY, 1.0);
                 glTexEnvf(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_MODULATE);
+#endif
                 glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
                 glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
                 glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
@@ -603,6 +759,91 @@ int vout_display_opengl_Prepare(vout_display_opengl_t *vgl,
     vlc_gl_Unlock(vgl->gl);
     VLC_UNUSED(subpicture);
     return VLC_SUCCESS;
+}
+
+static void draw_without_shaders( vout_display_opengl_t *vgl, float *left, float *top, float *right, float *bottom )
+{
+    static const GLfloat vertexCoord[] = {
+        -1.0f, -1.0f,
+         1.0f, -1.0f,
+        -1.0f,  1.0f,
+         1.0f,  1.0f,
+    };
+
+    const GLfloat textureCoord[8] = {
+        left[0],  bottom[0],
+        right[0], bottom[0],
+        left[0],  top[0],
+        right[0], top[0]
+    };
+
+    for (unsigned j = 0; j < vgl->chroma->plane_count; j++) {
+       vgl->ActiveTexture( GL_TEXTURE0 + j );
+       vgl->ClientActiveTexture( GL_TEXTURE0 + j );
+
+       glEnableClientState(GL_VERTEX_ARRAY);
+       glEnableClientState(GL_TEXTURE_COORD_ARRAY);
+
+       glEnable(vgl->tex_target);
+
+       glBindTexture(vgl->tex_target, vgl->texture[0][j]);
+       glTexCoordPointer(2, GL_FLOAT, 0, textureCoord);
+    }
+    vgl->ActiveTexture( GL_TEXTURE0 );
+    vgl->ClientActiveTexture( GL_TEXTURE0 );
+
+    glVertexPointer(2, GL_FLOAT, 0, vertexCoord);
+
+    glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
+
+    for (unsigned j = 0; j < vgl->chroma->plane_count; j++) {
+       vgl->ActiveTexture( GL_TEXTURE0 + j );
+       vgl->ClientActiveTexture( GL_TEXTURE0 + j );
+       glDisable(vgl->tex_target);
+       glDisableClientState(GL_TEXTURE_COORD_ARRAY);
+       glDisableClientState(GL_VERTEX_ARRAY);
+    }
+    vgl->ActiveTexture( GL_TEXTURE0 );
+    vgl->ClientActiveTexture( GL_TEXTURE0 );
+}
+
+static void draw_with_shaders( vout_display_opengl_t *vgl, float *left, float *top, float *right, float *bottom )
+{
+
+    const GLfloat vertexCoord[] = {
+        -1.0, 1.0,
+        -1.0, -1.0,
+        1.0, 1.0,
+        1.0, -1.0,
+    };
+
+    for( unsigned j = 0; j < vgl->chroma->plane_count; j++)
+    {
+        char *attribute = NULL;
+        const GLfloat texCoord[] = {
+            left[j], top[j],
+            left[j], bottom[j],
+            right[j], top[j],
+            right[j], bottom[j],
+        };
+        vgl->ActiveTexture( GL_TEXTURE0+j);
+        vgl->ClientActiveTexture( GL_TEXTURE0+j);
+        glEnable(vgl->tex_target);
+        glBindTexture(vgl->tex_target, vgl->texture[0][j]);
+        if(asprintf( &attribute, "MultiTexCoord%1d", j ) == -1 )
+            return;
+
+        vgl->EnableVertexAttribArray( vgl->GetAttribLocation(vgl->program[0], attribute ) );
+        vgl->VertexAttribPointer( vgl->GetAttribLocation( vgl->program[0], attribute ), 2, GL_FLOAT, 0, 0, texCoord);
+        free( attribute );
+        attribute = NULL;
+    }
+    vgl->ActiveTexture(GL_TEXTURE0 + 0);
+    vgl->ClientActiveTexture(GL_TEXTURE0 + 0);
+    vgl->EnableVertexAttribArray( vgl->GetAttribLocation( vgl->program[0], "vertex_position"));
+    vgl->VertexAttribPointer( vgl->GetAttribLocation( vgl->program[0], "vertex_position"), 2, GL_FLOAT, 0, 0, vertexCoord);
+
+    glDrawArrays( GL_TRIANGLE_STRIP, 0, 4);
 }
 
 int vout_display_opengl_Display(vout_display_opengl_t *vgl,
@@ -640,93 +881,28 @@ int vout_display_opengl_Display(vout_display_opengl_t *vgl,
 
     glClear(GL_COLOR_BUFFER_BIT);
 
-    if (vgl->program) {
-        glEnable(GL_FRAGMENT_PROGRAM_ARB);
-        for (int i = 0; i < vgl->local_count; i++)
-            vgl->ProgramLocalParameter4fvARB(GL_FRAGMENT_PROGRAM_ARB, i, vgl->local_value[i]);
+
+    if( vgl->program[0] )
+    {
+        vgl->UseProgram(vgl->program[0]);
+        vgl->Uniform4fv( vgl->GetUniformLocation( vgl->program[0], "coefficient" ), 4, vgl->local_value);
+        vgl->Uniform1i( vgl->GetUniformLocation( vgl->program[0], "Texture[0]" ), 0);
+        vgl->Uniform1i( vgl->GetUniformLocation( vgl->program[0], "Texture[1]" ), 1);
+        vgl->Uniform1i( vgl->GetUniformLocation( vgl->program[0], "Texture[2]" ), 2);
+        draw_with_shaders( vgl, left, top ,right, bottom );
+        // Change the program for overlays
+        vgl->UseProgram(vgl->program[1]);
+        vgl->Uniform1i( vgl->GetUniformLocation( vgl->program[1], "Texture[0]" ), 0);
     } else {
-        glEnable(vgl->tex_target);
+        draw_without_shaders( vgl, left, top, right, bottom );
     }
 
-#if USE_OPENGL_ES
-    static const GLfloat vertexCoord[] = {
-        -1.0f, -1.0f,
-         1.0f, -1.0f,
-        -1.0f,  1.0f,
-         1.0f,  1.0f,
-    };
-
-    const GLfloat textureCoord[8] = {
-        left[0],  bottom[0],
-        right[0], bottom[0],
-        left[0],  top[0],
-        right[0], top[0]
-    };
-
-    glEnableClientState(GL_VERTEX_ARRAY);
-    glEnableClientState(GL_TEXTURE_COORD_ARRAY);
-    glVertexPointer(2, GL_FLOAT, 0, vertexCoord);
-    glTexCoordPointer(2, GL_FLOAT, 0, textureCoord);
-
-    glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
-
-    glDisableClientState(GL_TEXTURE_COORD_ARRAY);
-    glDisableClientState(GL_VERTEX_ARRAY);
-    glDisable(vgl->tex_target);
-#else
-
-    const GLfloat vertexCoord[] = {
-        -1.0, 1.0,
-        -1.0, -1.0,
-        1.0, 1.0,
-        1.0, -1.0,
-    };
-
-    for( unsigned j = 0; j < vgl->chroma->plane_count; j++)
-    {
-        const GLfloat texCoord[] = {
-            left[j], top[j],
-            left[j], bottom[j],
-            right[j], top[j],
-            right[j], bottom[j],
-        };
-        vgl->ActiveTexture( GL_TEXTURE0+j);
-        vgl->ClientActiveTexture( GL_TEXTURE0+j);
-        glEnableClientState(GL_TEXTURE_COORD_ARRAY);
-        glBindTexture(vgl->tex_target, vgl->texture[0][j]);
-        glTexCoordPointer(2, GL_FLOAT, 0, texCoord);
-    }
-    glEnableClientState(GL_VERTEX_ARRAY);
-    glVertexPointer(2, GL_FLOAT, 0, vertexCoord);
-    glDrawArrays( GL_TRIANGLE_STRIP, 0, 4);
-    glDisableClientState(GL_VERTEX_ARRAY);
-
-    for( int j = vgl->chroma->plane_count; j >= 0;j--)
-    {
-        vgl->ActiveTexture( GL_TEXTURE0+j);
-        vgl->ClientActiveTexture( GL_TEXTURE0+j);
-        glDisableClientState(GL_TEXTURE_COORD_ARRAY);
-    }
-
-
-
-    if (vgl->program)
-        glDisable(GL_FRAGMENT_PROGRAM_ARB);
-    else
-        glDisable(vgl->tex_target);
-
-    if (vgl->use_multitexture)
-        vgl->ActiveTexture(GL_TEXTURE0 + 0);
+    vgl->ActiveTexture(GL_TEXTURE0 + 0);
+    vgl->ClientActiveTexture(GL_TEXTURE0 + 0);
     glEnable(GL_TEXTURE_2D);
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-    glEnableClientState(GL_VERTEX_ARRAY);
-    const GLfloat textureCoord[] = {
-        0.0, 0.0,
-        0.0, 1.0,
-        1.0, 0.0,
-        1.0, 1.0,
-    };
+
     for (int i = 0; i < vgl->region_count; i++) {
         gl_region_t *glr = &vgl->region[i];
         const GLfloat vertexCoord[] = {
@@ -735,19 +911,43 @@ int vout_display_opengl_Display(vout_display_opengl_t *vgl,
             glr->right, glr->top,
             glr->right,glr->bottom,
         };
-        glColor4f(1.0f, 1.0f, 1.0f, glr->alpha);
-        glEnableClientState(GL_TEXTURE_COORD_ARRAY);
+        static const GLfloat textureCoord[] = {
+            0.0, 0.0,
+            0.0, 1.0,
+            1.0, 0.0,
+            1.0, 1.0,
+        };
 
         glBindTexture(GL_TEXTURE_2D, glr->texture);
-        glVertexPointer(2, GL_FLOAT, 0, vertexCoord);
-        glTexCoordPointer(2, GL_FLOAT, 0, textureCoord);
+        if( vgl->program[0] )
+        {
+            vgl->Uniform4f( vgl->GetUniformLocation( vgl->program[1], "fillColor"), 1.0f, 1.0f, 1.0f, glr->alpha);
+            vgl->EnableVertexAttribArray( vgl->GetAttribLocation( vgl->program[1], "MultiTexCoord0") );
+            vgl->VertexAttribPointer( vgl->GetAttribLocation( vgl->program[1], "MultiTexCoord0"), 2, GL_FLOAT, 0, 0, textureCoord);
+            vgl->EnableVertexAttribArray( vgl->GetAttribLocation( vgl->program[1], "vertex_position"));
+            vgl->VertexAttribPointer( vgl->GetAttribLocation( vgl->program[1], "vertex_position"), 2, GL_FLOAT, 0, 0, vertexCoord);
+        }
+        else
+        {
+            glEnableClientState(GL_VERTEX_ARRAY);
+            glColor4f( 1.0f, 1.0f, 1.0f, glr->alpha );
+            glEnable(GL_TEXTURE_COORD_ARRAY);
+            glEnable(GL_VERTEX_ARRAY);
+            glTexCoordPointer(2, GL_FLOAT, 0, textureCoord);
+            glEnableClientState(GL_TEXTURE_COORD_ARRAY);
+            glVertexPointer(2, GL_FLOAT, 0, vertexCoord);
+        }
+
         glDrawArrays( GL_TRIANGLE_STRIP, 0, 4 );
-        glDisableClientState(GL_TEXTURE_COORD_ARRAY);
+
+        if( !vgl->program[0] )
+        {
+            glDisableClientState(GL_TEXTURE_COORD_ARRAY);
+            glDisableClientState(GL_VERTEX_ARRAY);
+        }
     }
-    glDisableClientState(GL_VERTEX_ARRAY);
     glDisable(GL_BLEND);
     glDisable(GL_TEXTURE_2D);
-#endif
 
     vlc_gl_Swap(vgl->gl);
 

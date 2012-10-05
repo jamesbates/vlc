@@ -154,24 +154,10 @@ char *vlc_readdir( DIR *dir )
     char *path = NULL;
 
     long len = fpathconf (dirfd (dir), _PC_NAME_MAX);
-#if !defined(__OS2__) || !defined(__INNOTEK_LIBC__)
-#ifdef NAME_MAX
     /* POSIX says there shall we room for NAME_MAX bytes at all times */
     if (/*len == -1 ||*/ len < NAME_MAX)
         len = NAME_MAX;
-#else
-    /* OS is broken. Lets assume there is no files left. */
-    if (len == -1)
-        return NULL;
-#endif
     len += offsetof (struct dirent, d_name) + 1;
-#else /* __OS2__ && __INNOTEK_LIBC__ */
-    /* In the implementation of Innotek LIBC, aka kLIBC on OS/2,
-     * fpathconf (_PC_NAME_MAX) is broken, and d_name is not the last member
-     * of struct dirent.
-     * So just allocate as many as the size of struct dirent. */
-    len = sizeof (struct dirent);
-#endif
 
     struct dirent *buf = malloc (len);
     if (unlikely(buf == NULL))
@@ -292,20 +278,6 @@ int vlc_dup (int oldfd)
     }
     return newfd;
 }
-
-#ifdef __ANDROID__ /* && we support android < 2.3 */
-/* pipe2() is declared and available since android-9 NDK,
- * although it is available in libc.a since android-3
- * We redefine the function here in order to be able to run
- * on versions of Android older than 2.3
- */
-#include <sys/syscall.h>
-//#include <sys/linux-syscalls.h> // fucking brokeness
-int pipe2(int fds[2], int flags)
-{
-    return syscall(/*__NR_pipe2 */ 359, fds, flags);
-}
-#endif /* __ANDROID__ */
 
 /**
  * Creates a pipe (see "man pipe" for further reference).

@@ -5,6 +5,8 @@ LIBTOOL=@LIBTOOL@ --tag=CC
 
 SOURCES_macosx = \
 	CompatibilityFixes.h \
+	StringUtility.h \
+	StringUtility.m \
 	AppleRemote.h \
 	AppleRemote.m \
 	SPInvocationGrabbing.h \
@@ -74,5 +76,14 @@ SOURCES_macosx = \
 	VideoView.m \
 	MainWindowTitle.h \
 	MainWindowTitle.m \
+	ConvertAndSave.h \
+	ConvertAndSave.m \
+	SharedDialogs.h \
+	SharedDialogs.m \
+	Windows.h \
+	Windows.m \
+	ControlsBar.m \
+	ControlsBar.h \
+	VLCVoutWindowController.m \
+	VLCVoutWindowController.h \
 	$(NULL)
-

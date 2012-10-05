@@ -30,6 +30,7 @@
 #include <QTreeView>
 #include <QTreeWidget>
 #include "util/singleton.hpp"
+class QPushButton;
 
 class BookmarksDialog : public QVLCFrame, public Singleton<BookmarksDialog>
 {
@@ -39,6 +40,9 @@ private:
     virtual ~BookmarksDialog();
 
     QTreeWidget *bookmarksList;
+    QPushButton *clearButton;
+    QPushButton *delButton;
+    bool b_ignore_updates;
 
 private slots:
     void update();
@@ -48,6 +52,7 @@ private slots:
     void edit( QTreeWidgetItem *item, int column );
     void extract();
     void activateItem( QModelIndex index );
+    void updateButtons();
 
     friend class    Singleton<BookmarksDialog>;
 };

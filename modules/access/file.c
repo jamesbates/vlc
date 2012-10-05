@@ -53,13 +53,6 @@
 #endif
 #include <dirent.h>
 
-#if defined( WIN32 ) && !defined( UNDER_CE )
-#   ifdef lseek
-#      undef lseek
-#   endif
-#   define lseek _lseeki64
-#endif
-
 #include <vlc_common.h>
 #include "fs.h"
 #include <vlc_input.h>
@@ -121,7 +114,7 @@ static bool IsRemote (int fd)
 #else /* WIN32 || __OS2__ */
 static bool IsRemote (const char *path)
 {
-# if !defined(UNDER_CE) && !defined(__OS2__)
+# if !defined(__OS2__)
     wchar_t *wpath = ToWide (path);
     bool is_remote = (wpath != NULL && PathIsNetworkPathW (wpath));
     free (wpath);
@@ -169,6 +162,8 @@ int FileOpen( vlc_object_t *p_this )
     {
         const char *path = p_access->psz_filepath;
 
+        if (unlikely(path == NULL))
+            return VLC_EGENERIC;
         msg_Dbg (p_access, "opening file `%s'", path);
         fd = vlc_open (path, O_RDONLY | O_NONBLOCK);
         if (fd == -1)
@@ -187,6 +182,18 @@ int FileOpen( vlc_object_t *p_this )
         msg_Err (p_access, "failed to read (%m)");
         goto error;
     }
+
+#if O_NONBLOCK
+    int flags = fcntl (fd, F_GETFL);
+    if (S_ISFIFO (st.st_mode) || S_ISSOCK (st.st_mode))
+        /* Force non-blocking mode where applicable (fd://) */
+        flags |= O_NONBLOCK;
+    else
+        /* Force blocking mode when not useful or not specified */
+        flags &= ~O_NONBLOCK;
+    fcntl (fd, F_SETFL, flags);
+#endif
+
     /* Directories can be opened and read from, but only readdir() knows
      * how to parse the data. The directory plugin will do it. */
     if (S_ISDIR (st.st_mode))

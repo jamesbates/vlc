@@ -2189,11 +2189,11 @@ msgstr ""
 
 #: src/libvlc-module.c:508
 msgid "Video splitter module"
-msgstr "Module de filtre vidéo"
+msgstr "Module de séparation vidéo"
 
 #: src/libvlc-module.c:510
 msgid "This adds video splitters like clone or wall"
-msgstr "Ajouter des filtres de sortie vidéo comme clone ou mur"
+msgstr "Ajouter des filtres de séparation vidéo comme clone ou mur.."
 
 #: src/libvlc-module.c:512
 msgid "Video filter module"
@@ -2675,7 +2675,7 @@ msgstr "Liste de résolutions vidéos préférées"
 msgid ""
 "When several video formats are available, select one whose resolution is "
 "closest to (but not higher than) this setting, in number of lines. Use this "
-"option if you don't have enough CPU power or network bandwith to play higher "
+"option if you don't have enough CPU power or network bandwidth to play higher "
 "resolutions."
 msgstr ""
 "Quand plusieurs formats de vidéo sont disponibles, choisir celui dont la "
@@ -2750,7 +2750,7 @@ msgstr "Vitesse de lecture"
 
 #: src/libvlc-module.c:771
 msgid "This defines the playback speed (nominal speed is 1.0)."
-msgstr "Ceci définit la vitesse de lexture (la vitesse nominale est 1.0)."
+msgstr "Ceci définit la vitesse de lecture (la vitesse nominale est 1.0)."
 
 #: src/libvlc-module.c:773
 msgid "Input list"
@@ -8023,7 +8023,7 @@ msgstr "La session a échoué"
 
 #: modules/access/rtsp/access.c:229
 msgid "The requested RTSP session could not be established."
-msgstr "La sesion TRSP demandée n'a pu être établie."
+msgstr "La session RTSP demandée n'a pu être établie."
 
 #: modules/access/screen/screen.c:43
 #: modules/gui/qt4/components/open_panels.cpp:1034
@@ -9849,7 +9849,7 @@ msgid ""
 "The audio device \"%s\" could not be used:\n"
 "%s."
 msgstr ""
-"Le périphérique audio « %s » ne peut pas êtr utilisé:\n"
+"Le périphérique audio « %s » ne peut pas être utilisé:\n"
 "%s."
 
 #: modules/audio_output/amem.c:34
@@ -14068,14 +14068,14 @@ msgid ""
 msgstr ""
 "Ce fichier AVI a un index éronné ou absent, il ne sera pas possible de se "
 "déplacer dedans correctement.\n"
-"VLC ne réparera pas le fichier mais peu temporairement contourner ce "
+"VLC ne réparera pas le fichier mais peut temporairement contourner ce "
 "problème en construisant un index en mémoire.\n"
 "Cette opération peut prendre du temps sur des gros fichiers.\n"
-"Souhaitez-vous essayer de le réparer ?"
+"Que souhaitez-vous faire ?"
 
 #: modules/demux/avi/avi.c:682
 msgid "Build index then play"
-msgstr "Contruire l'index pendant la lecture"
+msgstr "Construire l'index et lire"
 
 #: modules/demux/avi/avi.c:682
 msgid "Play as is"
@@ -20125,7 +20125,7 @@ msgstr "Ouvrir un périphérique de &capture…"
 
 #: modules/gui/qt4/menus.cpp:352
 msgid "&Open (advanced)..."
-msgstr "&Ouvrir un fichier…"
+msgstr "&Ouvrir (possibilités étendues)…"
 
 #: modules/gui/qt4/menus.cpp:356
 msgid "Open &Location from clipboard"
@@ -30425,14 +30425,6 @@ msgstr "Mettre à la file"
 #, fuzzy
 #~ msgid "Automate picture coding mode"
 #~ msgstr "Réglage de mode d'image"
-
-#, fuzzy
-#~ msgid ""
-#~ "This is the relative default size of the fonts that will be rendered on "
-#~ "the video. If absolute font size is set, relative size will be overriden."
-#~ msgstr ""
-#~ "Taille par défaut relative des polices à afficher. Si une taille absolue "
-#~ "est spécifiée, la taille relative sera surchargée."
 
 #, fuzzy
 #~ msgid ""

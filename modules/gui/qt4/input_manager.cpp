@@ -38,6 +38,8 @@
 #include <vlc_aout_intf.h>
 
 #include <QApplication>
+#include <QFile>
+#include <QDir>
 
 #include <assert.h>
 
@@ -51,16 +53,18 @@ static int PLItemAppended( vlc_object_t *, const char *,
                         vlc_value_t, vlc_value_t, void * );
 static int PLItemRemoved( vlc_object_t *, const char *,
                         vlc_value_t, vlc_value_t, void * );
-static int VolumeChanged( vlc_object_t *, const char *,
-                        vlc_value_t, vlc_value_t, void * );
-static int SoundMuteChanged( vlc_object_t *, const char *,
-                        vlc_value_t, vlc_value_t, void * );
 
 static int InputEvent( vlc_object_t *, const char *,
                        vlc_value_t, vlc_value_t, void * );
 static int VbiEvent( vlc_object_t *, const char *,
                      vlc_value_t, vlc_value_t, void * );
 
+/* Ensure arbitratry (not dynamically allocated) event IDs are not in use */
+static inline void registerAndCheckEventIds( int start, int end )
+{
+    for ( int i=start ; i<=end ; i++ )
+        Q_ASSERT( QEvent::registerEventType( i ) == i ); /* event ID collision ! */
+}
 
 /**********************************************************************
  * InputManager implementation
@@ -83,6 +87,8 @@ InputManager::InputManager( QObject *parent, intf_thread_t *_p_intf) :
     timeA        = 0;
     timeB        = 0;
     f_cache      = -1.; /* impossible initial value, different from all */
+    registerAndCheckEventIds( IMEvent::PositionUpdate, IMEvent::FullscreenControlPlanHide );
+    registerAndCheckEventIds( PLEvent::PLItemAppended, PLEvent::PLEmpty );
 }
 
 InputManager::~InputManager()
@@ -177,8 +183,8 @@ void InputManager::customEvent( QEvent *event )
     int i_type = event->type();
     IMEvent *ple = static_cast<IMEvent *>(event);
 
-    if( i_type == ItemChanged_Type )
-        UpdateMeta( ple->p_item );
+    if( i_type == IMEvent::ItemChanged )
+        UpdateMeta( ple->item() );
 
     if( !hasInput() )
         return;
@@ -186,76 +192,77 @@ void InputManager::customEvent( QEvent *event )
     /* Actions */
     switch( i_type )
     {
-    case PositionUpdate_Type:
+    case IMEvent::PositionUpdate:
         UpdatePosition();
         break;
-    case StatisticsUpdate_Type:
+    case IMEvent::StatisticsUpdate:
         UpdateStats();
         break;
-    case ItemChanged_Type:
+    case IMEvent::ItemChanged:
         /* Ignore ItemChanged_Type event that does not apply to our input */
-        if( p_item == ple->p_item )
+        if( p_item == ple->item() )
         {
             UpdateStatus();
             // UpdateName();
             UpdateArt();
+            UpdateMeta();
             /* Update duration of file */
         }
         break;
-    case ItemStateChanged_Type:
+    case IMEvent::ItemStateChanged:
         // TODO: Fusion with above state
         UpdateStatus();
         // UpdateName();
         // UpdateNavigation(); This shouldn't be useful now
         // UpdateTeletext(); Same
         break;
-    case NameChanged_Type:
+    case IMEvent::NameChanged:
         UpdateName();
         break;
-    case MetaChanged_Type:
+    case IMEvent::MetaChanged:
         UpdateMeta();
         UpdateName(); /* Needed for NowPlaying */
         UpdateArt(); /* Art is part of meta in the core */
         break;
-    case InfoChanged_Type:
+    case IMEvent::InfoChanged:
         UpdateInfo();
         break;
-    case ItemTitleChanged_Type:
+    case IMEvent::ItemTitleChanged:
         UpdateNavigation();
         UpdateName(); /* Display the name of the Chapter, if exists */
         break;
-    case ItemRateChanged_Type:
+    case IMEvent::ItemRateChanged:
         UpdateRate();
         break;
-    case ItemEsChanged_Type:
+    case IMEvent::ItemEsChanged:
         UpdateTeletext();
         // We don't do anything ES related. Why ?
         break;
-    case ItemTeletextChanged_Type:
+    case IMEvent::ItemTeletextChanged:
         UpdateTeletext();
         break;
-    case InterfaceVoutUpdate_Type:
+    case IMEvent::InterfaceVoutUpdate:
         UpdateVout();
         break;
-    case SynchroChanged_Type:
+    case IMEvent::SynchroChanged:
         emit synchroChanged();
         break;
-    case CachingEvent_Type:
+    case IMEvent::CachingEvent:
         UpdateCaching();
         break;
-    case BookmarksChanged_Type:
+    case IMEvent::BookmarksChanged:
         emit bookmarksChanged();
         break;
-    case InterfaceAoutUpdate_Type:
+    case IMEvent::InterfaceAoutUpdate:
         UpdateAout();
         break;
-    case RecordingEvent_Type:
+    case IMEvent::RecordingEvent:
         UpdateRecord();
         break;
-    case ProgramChanged_Type:
+    case IMEvent::ProgramChanged:
         UpdateProgramEvent();
         break;
-    case EPGEvent_Type:
+    case IMEvent::EPGEvent:
         UpdateEPG();
         break;
     default:
@@ -285,7 +292,7 @@ static int ItemChanged( vlc_object_t *p_this, const char *psz_var,
     InputManager *im = (InputManager*)param;
     input_item_t *p_item = static_cast<input_item_t *>(newval.p_address);
 
-    IMEvent *event = new IMEvent( ItemChanged_Type, p_item );
+    IMEvent *event = new IMEvent( IMEvent::ItemChanged, p_item );
     QApplication::postEvent( im, event );
     return VLC_SUCCESS;
 }
@@ -301,74 +308,74 @@ static int InputEvent( vlc_object_t *p_this, const char *,
     switch( newval.i_int )
     {
     case INPUT_EVENT_STATE:
-        event = new IMEvent( ItemStateChanged_Type );
+        event = new IMEvent( IMEvent::ItemStateChanged );
         break;
     case INPUT_EVENT_RATE:
-        event = new IMEvent( ItemRateChanged_Type );
+        event = new IMEvent( IMEvent::ItemRateChanged );
         break;
     case INPUT_EVENT_POSITION:
     //case INPUT_EVENT_LENGTH:
-        event = new IMEvent( PositionUpdate_Type );
+        event = new IMEvent( IMEvent::PositionUpdate );
         break;
 
     case INPUT_EVENT_TITLE:
     case INPUT_EVENT_CHAPTER:
-        event = new IMEvent( ItemTitleChanged_Type );
+        event = new IMEvent( IMEvent::ItemTitleChanged );
         break;
 
     case INPUT_EVENT_ES:
-        event = new IMEvent( ItemEsChanged_Type );
+        event = new IMEvent( IMEvent::ItemEsChanged );
         break;
     case INPUT_EVENT_TELETEXT:
-        event = new IMEvent( ItemTeletextChanged_Type );
+        event = new IMEvent( IMEvent::ItemTeletextChanged );
         break;
 
     case INPUT_EVENT_STATISTICS:
-        event = new IMEvent( StatisticsUpdate_Type );
+        event = new IMEvent( IMEvent::StatisticsUpdate );
         break;
 
     case INPUT_EVENT_VOUT:
-        event = new IMEvent( InterfaceVoutUpdate_Type );
+        event = new IMEvent( IMEvent::InterfaceVoutUpdate );
         break;
     case INPUT_EVENT_AOUT:
-        event = new IMEvent( InterfaceAoutUpdate_Type );
+        event = new IMEvent( IMEvent::InterfaceAoutUpdate );
         break;
 
     case INPUT_EVENT_ITEM_META: /* Codec MetaData + Art */
-        event = new IMEvent( MetaChanged_Type );
+        event = new IMEvent( IMEvent::MetaChanged );
         break;
     case INPUT_EVENT_ITEM_INFO: /* Codec Info */
-        event = new IMEvent( InfoChanged_Type );
+        event = new IMEvent( IMEvent::InfoChanged );
         break;
     case INPUT_EVENT_ITEM_NAME:
-        event = new IMEvent( NameChanged_Type );
+        event = new IMEvent( IMEvent::NameChanged );
         break;
 
     case INPUT_EVENT_AUDIO_DELAY:
     case INPUT_EVENT_SUBTITLE_DELAY:
-        event = new IMEvent( SynchroChanged_Type );
+        event = new IMEvent( IMEvent::SynchroChanged );
         break;
 
     case INPUT_EVENT_CACHE:
-        event = new IMEvent( CachingEvent_Type );
+        event = new IMEvent( IMEvent::CachingEvent );
         break;
 
     case INPUT_EVENT_BOOKMARK:
-        event = new IMEvent( BookmarksChanged_Type );
+        event = new IMEvent( IMEvent::BookmarksChanged );
         break;
 
     case INPUT_EVENT_RECORD:
-        event = new IMEvent( RecordingEvent_Type );
+        event = new IMEvent( IMEvent::RecordingEvent );
         break;
 
     case INPUT_EVENT_PROGRAM:
         /* This is for PID changes */
-        event = new IMEvent( ProgramChanged_Type );
+        event = new IMEvent( IMEvent::ProgramChanged );
         break;
 
     case INPUT_EVENT_ITEM_EPG:
         /* EPG data changed */
-        event = new IMEvent( EPGEvent_Type );
+        event = new IMEvent( IMEvent::EPGEvent );
         break;
 
     case INPUT_EVENT_SIGNAL:
@@ -389,7 +396,7 @@ static int VbiEvent( vlc_object_t *, const char *,
                      vlc_value_t, vlc_value_t, void *param )
 {
     InputManager *im = (InputManager*)param;
-    IMEvent *event = new IMEvent( ItemTeletextChanged_Type );
+    IMEvent *event = new IMEvent( IMEvent::ItemTeletextChanged );
 
     QApplication::postEvent( im, event );
     return VLC_SUCCESS;
@@ -426,6 +433,11 @@ void InputManager::UpdateNavigation()
     }
     else
         emit chapterChanged( false );
+
+    if( hasInput() )
+        emit inputCanSeek( var_GetBool( p_input, "can-seek" ) );
+    else
+        emit inputCanSeek( false );
 }
 
 void InputManager::UpdateStatus()
@@ -460,13 +472,13 @@ void InputManager::UpdateName()
 
     /* Try to get the nowplaying */
     char *format = var_InheritString( p_intf, "input-title-format" );
-    char *formated = str_format_meta( p_input, format );
+    char *formated = str_format_meta( THEPL, format );
     free( format );
     name = qfu(formated);
     free( formated );
 
     /* If we have Nothing */
-    if( name.isEmpty() )
+    if( name.simplified().isEmpty() )
     {
         char *uri = input_item_GetURI( input_GetItem( p_input ) );
         char *file = uri ? strrchr( uri, '/' ) : NULL;
@@ -628,17 +640,31 @@ void InputManager::UpdateCaching()
     }
 }
 
-void InputManager::requestArtUpdate()
+void InputManager::requestArtUpdate( input_item_t *p_item )
 {
-    if( hasInput() )
-    {
-        playlist_AskForArtEnqueue( pl_Get(p_intf), input_GetItem( p_input ) );
+    bool b_current_item = false;
+    if ( !p_item && hasInput() )
+    {   /* default to current item */
+        p_item = input_GetItem( p_input );
+        b_current_item = true;
     }
-    else
+
+    if ( p_item )
     {
+        /* check if it has already been enqueued */
+        if ( p_item->p_meta )
+        {
+            int status = vlc_meta_GetStatus( p_item->p_meta );
+            if ( status & ( ITEM_ART_NOTFOUND|ITEM_ART_FETCHED ) )
+                return;
+        }
+        playlist_AskForArtEnqueue( pl_Get(p_intf), p_item );
         /* No input will signal the cover art to update,
-         * let's do it ourself */
-        UpdateArt();
+             * let's do it ourself */
+        if ( b_current_item )
+            UpdateArt();
+        else
+            emit artChanged( p_item );
     }
 }
 
@@ -680,6 +706,24 @@ void InputManager::UpdateArt()
     emit artChanged( artUrl );
 }
 
+void InputManager::setArt( input_item_t *p_item, QString fileUrl )
+{
+    if( hasInput() )
+    {
+        char *psz_cachedir = config_GetUserDir( VLC_CACHE_DIR );
+        QString old_url = THEMIM->getIM()->decodeArtURL( p_item );
+        old_url = QDir( old_url ).canonicalPath();
+
+        if( old_url.startsWith( QString::fromUtf8( psz_cachedir ) ) )
+            QFile( old_url ).remove(); /* Purge cached artwork */
+
+        free( psz_cachedir );
+
+        input_item_SetArtURL( p_item , fileUrl.toUtf8().constData() );
+        UpdateArt();
+    }
+}
+
 inline void InputManager::UpdateStats()
 {
     assert( p_input );
@@ -689,6 +733,7 @@ inline void InputManager::UpdateStats()
 inline void InputManager::UpdateMeta( input_item_t *p_item_ )
 {
     emit metaChanged( p_item_ );
+    emit artChanged( p_item_ );
 }
 
 inline void InputManager::UpdateMeta()
@@ -926,7 +971,8 @@ void InputManager::AtoBLoop( float, int64_t i_time, int )
 MainInputManager::MainInputManager( intf_thread_t *_p_intf )
     : QObject(NULL), p_intf( _p_intf ),
       random( VLC_OBJECT(THEPL), "random" ),
-      repeat( VLC_OBJECT(THEPL), "repeat" ), loop( VLC_OBJECT(THEPL), "loop" )
+      repeat( VLC_OBJECT(THEPL), "repeat" ), loop( VLC_OBJECT(THEPL), "loop" ),
+      volume( VLC_OBJECT(THEPL), "volume" ), mute( VLC_OBJECT(THEPL), "mute" )
 {
     p_input = NULL;
     im = new InputManager( this, p_intf );
@@ -941,8 +987,8 @@ MainInputManager::MainInputManager( intf_thread_t *_p_intf )
     repeat.addCallback( this, SLOT(notifyRepeatLoop(bool)) );
     loop.addCallback( this, SLOT(notifyRepeatLoop(bool)) );
 
-    var_AddCallback( THEPL, "volume", VolumeChanged, this );
-    var_AddCallback( THEPL, "mute", SoundMuteChanged, this );
+    volume.addCallback( this, SLOT(notifyVolume(float)) );
+    mute.addCallback( this, SLOT(notifyMute(bool)) );
 
     /* Warn our embedded IM about input changes */
     DCONNECT( this, inputChanged( input_thread_t * ),
@@ -966,9 +1012,6 @@ MainInputManager::~MainInputManager()
        var_DelCallback( p_input, "state", PLItemChanged, this );
        vlc_object_release( p_input );
     }
-
-    var_DelCallback( THEPL, "volume", VolumeChanged, this );
-    var_DelCallback( THEPL, "mute", SoundMuteChanged, this );
 
     var_DelCallback( THEPL, "activity", PLItemChanged, this );
     var_DelCallback( THEPL, "item-change", ItemChanged, im );
@@ -998,30 +1041,24 @@ void MainInputManager::customEvent( QEvent *event )
     // msg_Dbg( p_intf, "New MainIM Event of type: %i", type );
     switch( type )
     {
-    case VolumeChanged_Type:
-        emit volumeChanged();
-        return;
-    case SoundMuteChanged_Type:
-        emit soundMuteChanged();
-        return;
-    case PLItemAppended_Type:
+    case PLEvent::PLItemAppended:
         plEv = static_cast<PLEvent*>( event );
-        emit playlistItemAppended( plEv->i_item, plEv->i_parent );
+        emit playlistItemAppended( plEv->getItemId(), plEv->getParentId() );
         return;
-    case PLItemRemoved_Type:
+    case PLEvent::PLItemRemoved:
         plEv = static_cast<PLEvent*>( event );
-        emit playlistItemRemoved( plEv->i_item );
+        emit playlistItemRemoved( plEv->getItemId() );
         return;
-    case PLEmpty_Type:
+    case PLEvent::PLEmpty:
         plEv = static_cast<PLEvent*>( event );
-        emit playlistNotEmpty( plEv->i_item >= 0 );
+        emit playlistNotEmpty( plEv->getItemId() >= 0 );
         return;
-    case LeafToParent_Type:
+    case PLEvent::LeafToParent:
         plEv = static_cast<PLEvent*>( event );
-        emit leafBecameParent( plEv->i_item );
+        emit leafBecameParent( plEv->getItemId() );
         return;
     default:
-        if( type != ItemChanged_Type ) return;
+        if( type != IMEvent::ItemChanged ) return;
     }
 
     /* Should be PLItemChanged Event */
@@ -1192,7 +1229,7 @@ static int PLItemChanged( vlc_object_t *p_this, const char *psz_var,
 
     MainInputManager *mim = (MainInputManager*)param;
 
-    IMEvent *event = new IMEvent( ItemChanged_Type );
+    IMEvent *event = new IMEvent( IMEvent::ItemChanged );
     QApplication::postEvent( mim, event );
     return VLC_SUCCESS;
 }
@@ -1203,34 +1240,20 @@ static int LeafToParent( vlc_object_t *p_this, const char *psz_var,
     VLC_UNUSED( p_this ); VLC_UNUSED( psz_var ); VLC_UNUSED( oldval );
     MainInputManager *mim = (MainInputManager*)param;
 
-    PLEvent *event = new PLEvent( LeafToParent_Type, newval.i_int );
+    PLEvent *event = new PLEvent( PLEvent::LeafToParent, newval.i_int );
 
     QApplication::postEvent( mim, event );
     return VLC_SUCCESS;
 }
 
-static int VolumeChanged( vlc_object_t *p_this, const char *psz_var,
-                        vlc_value_t oldval, vlc_value_t newval, void *param )
+void MainInputManager::notifyVolume( float volume )
 {
-    VLC_UNUSED( p_this ); VLC_UNUSED( psz_var ); VLC_UNUSED( oldval ); VLC_UNUSED( newval );
-
-    MainInputManager *mim = (MainInputManager*)param;
-
-    IMEvent *event = new IMEvent( VolumeChanged_Type );
-    QApplication::postEvent( mim, event );
-    return VLC_SUCCESS;
+    emit volumeChanged( volume );
 }
 
-static int SoundMuteChanged( vlc_object_t *p_this, const char *psz_var,
-                        vlc_value_t oldval, vlc_value_t newval, void *param )
+void MainInputManager::notifyMute( bool mute )
 {
-    VLC_UNUSED( p_this ); VLC_UNUSED( psz_var ); VLC_UNUSED( oldval ); VLC_UNUSED( newval );
-
-    MainInputManager *mim = (MainInputManager*)param;
-
-    IMEvent *event = new IMEvent( SoundMuteChanged_Type );
-    QApplication::postEvent( mim, event );
-    return VLC_SUCCESS;
+    emit soundMuteChanged(mute);
 }
 
 static int PLItemAppended
@@ -1240,9 +1263,9 @@ static int PLItemAppended
     MainInputManager *mim = static_cast<MainInputManager*>(data);
     playlist_add_t *p_add = static_cast<playlist_add_t*>( cur.p_address );
 
-    PLEvent *event = new PLEvent( PLItemAppended_Type, p_add->i_item, p_add->i_node  );
+    PLEvent *event = new PLEvent( PLEvent::PLItemAppended, p_add->i_item, p_add->i_node  );
     QApplication::postEvent( mim, event );
-    event = new PLEvent( PLEmpty_Type, p_add->i_item, 0  );
+    event = new PLEvent( PLEvent::PLEmpty, p_add->i_item, 0  );
     QApplication::postEvent( mim, event );
     return VLC_SUCCESS;
 }
@@ -1254,12 +1277,12 @@ static int PLItemRemoved
     playlist_t *pl = (playlist_t *) obj;
     MainInputManager *mim = static_cast<MainInputManager*>(data);
 
-    PLEvent *event = new PLEvent( PLItemRemoved_Type, cur.i_int, 0  );
+    PLEvent *event = new PLEvent( PLEvent::PLItemRemoved, cur.i_int, 0  );
     QApplication::postEvent( mim, event );
     // can't use playlist_IsEmpty(  ) as it isn't true yet
     if ( pl->items.i_size == 1 ) // lock is held
     {
-        event = new PLEvent( PLEmpty_Type, -1, 0 );
+        event = new PLEvent( PLEvent::PLEmpty, -1, 0 );
         QApplication::postEvent( mim, event );
     }
     return VLC_SUCCESS;

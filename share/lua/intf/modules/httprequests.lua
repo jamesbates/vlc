@@ -31,7 +31,13 @@ local dkjson = require ("dkjson")
 
 --Round the number to the specified precision
 function round(what, precision)
-  if what then return math.floor(what*math.pow(10,precision)+0.5) / math.pow(10,precision) else return "" end
+  if type(what) == "string" then
+    what = common.us_tonumber(what)
+  end
+  if type(what) == "number" then
+    return math.floor(what*math.pow(10,precision)+0.5) / math.pow(10,precision)
+  end
+  return nil
 end
 
 --split text where it matches the delimiter
@@ -68,7 +74,7 @@ processcommands = function ()
     local id = tonumber(_GET['id'] or -1)
     local val = _GET['val']
     local options = _GET['option']
-    local band = _GET['band']
+    local band = tonumber(_GET['band'])
     if type(options) ~= "table" then -- Deal with the 0 or 1 option case
       options = { options }
     end
@@ -152,14 +158,17 @@ processcommands = function ()
       common.hotkey("key-"..val)
     elseif command == "audiodelay" then
       if vlc.object.input() and val then
+       val = common.us_tonumber(val)
        vlc.var.set(vlc.object.input(),"audio-delay",val)
       end
     elseif command == "rate" then
-      if vlc.object.input() and tonumber(val) >= 0 then
+      val = common.us_tonumber(val)
+      if vlc.object.input() and val >= 0 then
        vlc.var.set(vlc.object.input(),"rate",val)
       end
     elseif command == "subdelay" then
       if vlc.object.input() then
+       val = common.us_tonumber(val)
        vlc.var.set(vlc.object.input(),"spu-delay",val)
       end
     elseif command == "aspectratio" then
@@ -167,8 +176,10 @@ processcommands = function ()
        vlc.var.set(vlc.object.vout(),"aspect-ratio",val)
       end
     elseif command == "preamp" then
+      val = common.us_tonumber(val)
       vlc.equalizer.preampset(val)
     elseif command == "equalizer" then
+      val = common.us_tonumber(val)
       vlc.equalizer.equalizerset(band,val)
     elseif command == "enableeq" then
       if val == '0' then vlc.equalizer.enable(false) else vlc.equalizer.enable(true) end
