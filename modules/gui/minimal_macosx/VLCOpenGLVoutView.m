@@ -67,7 +67,7 @@ int cocoaglvoutviewInit( vout_window_t *p_wnd, const vout_window_cfg_t *cfg)
 
 
     /* Create the GL view */
-    struct args { vout_window_t *p_wnd; vout_window_cfg_t *cfg; id <VLCOpenGLVoutEmbedding> container; } args = { p_wnd, cfg, o_cocoaglview_container };
+    struct args { vout_window_t *p_wnd; const vout_window_cfg_t *cfg; id <VLCOpenGLVoutEmbedding> container; } args = { p_wnd, cfg, o_cocoaglview_container };
 
     [VLCOpenGLVoutView performSelectorOnMainThread:@selector(autoinitOpenGLVoutViewIntVoutWithContainer:)
                         withObject:[NSData dataWithBytes: &args length: sizeof(struct args)] waitUntilDone:YES];
@@ -110,91 +110,6 @@ void cocoaglvoutviewEnd( vout_window_t * p_wnd )
 }
 
 /*****************************************************************************
- * cocoaglvoutviewManage
- *****************************************************************************/
-/*int cocoaglvoutviewManage( vout_thread_t * p_vout )
-{
-    if( p_vout->i_changes & VOUT_ASPECT_CHANGE )
-    {
-        [p_vout->p_sys->o_glview reshape];
-        p_vout->i_changes &= ~VOUT_ASPECT_CHANGE;
-    }
-    if( p_vout->i_changes & VOUT_CROP_CHANGE )
-    {
-        [p_vout->p_sys->o_glview reshape];
-        p_vout->i_changes &= ~VOUT_CROP_CHANGE;
-    }
-
-    if( p_vout->i_changes & VOUT_FULLSCREEN_CHANGE )
-    {
-        NSAutoreleasePool *o_pool = [[NSAutoreleasePool alloc] init];
-
-        p_vout->b_fullscreen = !p_vout->b_fullscreen;
-
-        if( p_vout->b_fullscreen )
-            [[p_vout->p_sys->o_glview container] enterFullscreen];
-        else
-            [[p_vout->p_sys->o_glview container] leaveFullscreen];
-
-        [o_pool release];
-
-        p_vout->i_changes &= ~VOUT_FULLSCREEN_CHANGE;
-    }
-
-    //[[p_vout->p_sys->o_glview container] manage];
-    return VLC_SUCCESS;
-}
-*/
-/*****************************************************************************
- * cocoaglvoutviewControl: control facility for the vout
- *****************************************************************************/
-/*int cocoaglvoutviewControl( vout_thread_t *p_vout, int i_query, va_list args )
-{
-    bool b_arg;
-
-    switch( i_query )
-    {
-        case VOUT_SET_STAY_ON_TOP:
-            b_arg = (bool) va_arg( args, int );
-            [[p_vout->p_sys->o_glview container] setOnTop: b_arg];
-            return VLC_SUCCESS;
-
-        default:
-            return VLC_EGENERIC;
-    }
-}
-*/
-/*****************************************************************************
- * cocoaglvoutviewSwap
- *****************************************************************************/
-/*void cocoaglvoutviewSwap( vout_thread_t * p_vout )
-{
-    p_vout->p_sys->b_got_frame = true;
-    [[p_vout->p_sys->o_glview openGLContext] flushBuffer];
-}
-*/
-/*****************************************************************************
- * cocoaglvoutviewLock
- *****************************************************************************/
-/*int cocoaglvoutviewLock( vout_thread_t * p_vout )
-{
-    if( kCGLNoError == CGLLockContext([[p_vout->p_sys->o_glview openGLContext] CGLContextObj]) )
-    {
-        [[p_vout->p_sys->o_glview openGLContext] makeCurrentContext];
-        return 0;
-    }
-    return 1;
-}
-*/
-/*****************************************************************************
- * cocoaglvoutviewUnlock
- *****************************************************************************/
-/*void cocoaglvoutviewUnlock( vout_thread_t * p_vout )
-{
-    CGLUnlockContext([[p_vout->p_sys->o_glview openGLContext] CGLContextObj]);
-}
-*/
-/*****************************************************************************
  * VLCOpenGLVoutView implementation
  *****************************************************************************/
 @implementation VLCOpenGLVoutView
@@ -203,7 +118,6 @@ void cocoaglvoutviewEnd( vout_window_t * p_wnd )
  * vout_thread_t. Must be called from main thread. */
 + (void) autoinitOpenGLVoutViewIntVoutWithContainer: (NSData *) argsAsData
 {
-    //NSAutoreleasePool   *pool = [[NSAutoreleasePool alloc] init];
     struct args { vout_window_t *p_wnd; vout_window_cfg_t *cfg; id <VLCOpenGLVoutEmbedding> container; } *
         args = (struct args *)[argsAsData bytes];
     VLCOpenGLVoutView * oglview;
@@ -217,8 +131,6 @@ void cocoaglvoutviewEnd( vout_window_t * p_wnd )
 
     args->p_wnd->handle.nsobject = oglview;
     [args->container addVoutSubview: oglview];
-
-    //[pool release];
 }
 
 - (void)dealloc
